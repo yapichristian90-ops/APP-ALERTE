@@ -1,0 +1,47 @@
+name: Construire l'APK Alerte CI
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v4
+      - name: Installer Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Installer Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+      - name: Installer le SDK Android
+        uses: android-actions/setup-android@v3
+      - name: Installer les dépendances
+        run: npm install
+      - name: Compiler l'application web
+        run: npm run build
+      - name: Générer le projet Android
+        run: |
+          npx cap add android
+          npx cap sync android
+      - name: Configurer Firebase
+        run: cp google-services.json android/app/google-services.json
+      - name: Appliquer la configuration Firebase et les permissions
+        run: bash configurer-android.sh
+      - name: Compiler l'APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+      - name: Publier l'APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: alerte-ci-app
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
