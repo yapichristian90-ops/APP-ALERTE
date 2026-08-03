@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1041836082728",
+    "project_id": "ci-alerteci-appli",
+    "storage_bucket": "ci-alerteci-appli.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1041836082728:android:b98d8712b32db0b94f171d",
+        "android_client_info": {
+          "package_name": "ci.alerteci.appli"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDmjB1He-ktZCXEv-GoW5932qYOXbBEpDA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

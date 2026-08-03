@@ -1,0 +1,39 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+  html,body{margin:0;padding:0;background:transparent;}
+  .canvas{width:432px;height:432px;position:relative;}
+</style>
+</head>
+<body>
+<div class="canvas" id="c">
+<svg width="432" height="432" viewBox="0 0 432 432" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FB923C"/>
+      <stop offset="55%" stop-color="#F97316"/>
+      <stop offset="100%" stop-color="#C2410C"/>
+    </linearGradient>
+    <linearGradient id="shieldGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#FFF7ED"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.22"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <!-- background fills the whole safe zone so it looks correct as an adaptive-icon foreground too -->
+  <rect x="0" y="0" width="432" height="432" rx="96" fill="url(#bg)"/>
+  <rect x="0" y="0" width="432" height="432" rx="96" fill="url(#glow)"/>
+  <!-- shield -->
+  <g transform="translate(216,222)">
+    <path d="M0 -108 L86 -76 C86 -6 70 62 0 116 C-70 62 -86 -6 -86 -76 Z"
+          fill="url(#shieldGrad)" stroke="#7C2D12" stroke-width="6" stroke-opacity="0.15"/>
+    <!-- exclamation mark -->
+    <rect x="-11" y="-56" width="22" height="86" rx="11" fill="#EA580C"/>
+    <circle cx="0" cy="52" r="13" fill="#EA580C"/>
+  </g>
+</svg>
+</div>
+</body></html>

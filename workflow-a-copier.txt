@@ -1,0 +1,64 @@
+name: Construire l'APK Alerte CI
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v4
+
+      - name: Ranger les fichiers de l'application
+        run: |
+          mkdir -p www/assets
+          if [ ! -f www/index.html ]; then
+            f=$(find . -name "index.html" -not -path "./www/*" -not -path "./node_modules/*" | head -1)
+            [ -n "$f" ] && cp "$f" www/index.html
+          fi
+          if [ ! -f www/assets/app.js ]; then
+            f=$(find . -name "app.js" -not -path "./www/*" -not -path "./node_modules/*" | head -1)
+            [ -n "$f" ] && cp "$f" www/assets/app.js
+          fi
+          echo "Contenu de www :" && ls -R www
+
+      - name: Installer Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Installer Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Installer le SDK Android
+        uses: android-actions/setup-android@v3
+
+      - name: Installer les dépendances
+        run: npm install
+
+      - name: Générer le projet Android
+        run: |
+          npx cap add android
+          npx cap sync android
+
+      - name: Appliquer la configuration (permissions, Firebase, icônes, son)
+        run: bash configurer-android.sh
+
+      - name: Compiler l'APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Publier l'APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: alerte-ci-app
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
