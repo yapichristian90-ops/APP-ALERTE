@@ -43,55 +43,6 @@ public class SupabaseHelper {
         }).start();
     }
 
-    /** POST avec upsert (crée ou remplace la ligne existante pour cette clé). */
-    static void upsert(final String pathAvecOnConflict, final String jsonBody) {
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                HttpURLConnection c = null;
-                try {
-                    URL u = new URL(URL_BASE + "/rest/v1/" + pathAvecOnConflict);
-                    c = (HttpURLConnection) u.openConnection();
-                    c.setRequestMethod("POST");
-                    c.setConnectTimeout(10000);
-                    c.setReadTimeout(10000);
-                    c.setDoOutput(true);
-                    c.setRequestProperty("Content-Type", "application/json");
-                    c.setRequestProperty("apikey", ANON);
-                    c.setRequestProperty("Authorization", "Bearer " + ANON);
-                    c.setRequestProperty("Prefer", "resolution=merge-duplicates,return=minimal");
-                    OutputStream os = c.getOutputStream();
-                    os.write(jsonBody.getBytes("UTF-8"));
-                    os.flush();
-                    os.close();
-                    c.getResponseCode();
-                } catch (Exception e) {
-                    // ignore
-                } finally {
-                    if (c != null) c.disconnect();
-                }
-            }
-        }).start();
-    }
-
-    /** Position "toujours active" : jamais poussée à personne, consultable
-     *  uniquement par un contact de confiance via la fonction serveur
-     *  localiser-contact (voir supabase-edge-function/localiser-contact). */
-    static void publishLivePosition(String phone, double lat, double lng, int precision) {
-        try {
-            JSONObject row = new JSONObject();
-            row.put("telephone", phone);
-            row.put("lat", lat);
-            row.put("lng", lng);
-            row.put("precision", precision);
-            row.put("updated_at", new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US)
-                    .format(new java.util.Date()));
-            upsert("positions_live?on_conflict=telephone", row.toString());
-        } catch (Exception e) {
-            // ignore
-        }
-    }
-
     static void saveToken(String token, String phone) {
         try {
             JSONObject o = new JSONObject();

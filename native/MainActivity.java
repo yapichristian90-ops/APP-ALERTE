@@ -78,13 +78,13 @@ public class MainActivity extends BridgeActivity {
     }
 
     @Override
-    public void onResume() {
+    protected void onResume() {
         super.onResume();
         isForeground = true;
     }
 
     @Override
-    public void onPause() {
+    protected void onPause() {
         super.onPause();
         isForeground = false;
     }

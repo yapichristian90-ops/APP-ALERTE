@@ -2,6 +2,9 @@
   "name": "alerte-ci",
   "version": "1.0.0",
   "private": true,
+  "scripts": {
+    "build": "esbuild src/index.jsx --bundle --minify --jsx=automatic --loader:.js=jsx --outfile=www/assets/app.js"
+  },
   "dependencies": {
     "@capacitor/core": "^6.2.1",
     "@capacitor/android": "^6.2.1",
@@ -10,6 +13,9 @@
     "@capacitor/ios": "^6.2.1"
   },
   "devDependencies": {
-    "@capacitor/cli": "^6.2.1"
+    "@capacitor/cli": "^6.2.1",
+    "esbuild": "^0.28.1",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
   }
 }

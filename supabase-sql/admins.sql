@@ -49,14 +49,22 @@ values (
 on conflict (telephone) do nothing;
 
 -- ============================================================================
--- ✅ MISE À JOUR v18 — Les 3 points ci-dessous sont maintenant traités.
+-- ⚠️ NOTE DE SÉCURITÉ IMPORTANTE — À LIRE
 -- ----------------------------------------------------------------------------
--- Exécutez ENSUITE le script supabase-sql/migration_v18_akwaba_firebase.sql :
--- il ferme la lecture publique de cette table, ajoute les colonnes salt /
--- code_hash, et déploie (via supabase-edge-function/admin-api) une Edge
--- Function qui vérifie le code administrateur côté serveur (haché, jamais en
--- clair) avec limitation du nombre de tentatives. La première connexion
--- réussie migre automatiquement le code encore en clair inséré ci-dessus vers
--- sa version hachée — vous n'avez rien à faire de plus qu'exécuter la
--- migration et déployer la fonction.
+-- Les codes d'accès sont stockés en clair et la table est lisible avec la clé
+-- publique de l'application. C'est acceptable pour démarrer, mais AVANT une
+-- mise en production réelle, il faut impérativement :
+--
+--   1. Ne PAS laisser la politique de lecture ouverte à tous.
+--      Déplacer la vérification du code dans une Edge Function : l'application
+--      envoie numéro + code, la fonction (qui utilise la clé service_role)
+--      vérifie et renvoie uniquement le rôle et les permissions.
+--
+--   2. Stocker les codes hachés (bcrypt) plutôt qu'en clair.
+--
+--   3. Limiter le nombre de tentatives de connexion.
+--
+-- Tel quel, quelqu'un qui extrait la clé publique de l'APK pourrait lire cette
+-- table et obtenir les codes. Demandez-moi de faire cette version sécurisée
+-- quand vous approcherez de la mise en production.
 -- ============================================================================
