@@ -36,7 +36,7 @@ const SERVICES_PUBLICS_CONFIG = [
    fonctionnels mais sont retirés de la navigation visible. Il suffira de
    repasser l'indicateur concerné à true pour les republier dans une future
    version, sans réécrire ce code. ── */
-const FEATURES = { planning:false, alerteInfo:false, servicesPublics:false };
+const FEATURES = { planning:false, alerteInfo:false, servicesPublics:false, institutionSignup:false };
 
 /* ── Sanitisation des saisies utilisateur ────────────────────────────────
    Retire balises HTML/scripts et caractères de contrôle, borne la longueur.
@@ -1727,6 +1727,13 @@ const Violence = ({go,goBack,userInfo={}}) => {
     try{ const s=window.localStorage.getItem("alerteci_contacts_violence"); return s?JSON.parse(s):[]; }catch(e){ return []; }
   });
   useEffect(()=>{ try{ window.localStorage.setItem("alerteci_contacts_violence", JSON.stringify(contacts)); }catch(e){} },[contacts]);
+  /* Synchronise la liste au national (table contacts_confiance, colonne
+     "violence") — utile pour de futures fonctionnalités côté serveur,
+     sans changer le fonctionnement actuel (envoi direct par numéro). */
+  useEffect(()=>{
+    if(!userInfo.ph) return;
+    cloudUpsert("contacts_confiance", {telephone:userInfo.ph, violence:contacts}, "telephone").catch(()=>{});
+  },[contacts, userInfo.ph]);
   const [showContacts,setShowContacts]=useState(false);
   const [editContact,setEditContact]=useState(null); // null | {idx, nm, ph} | "new"
   const COULEURS=["#F97316","#3B82F6","#16A34A","#8B5CF6","#EC4899","#EF4444"];
@@ -2710,42 +2717,74 @@ const Violence = ({go,goBack,userInfo={}}) => {
 
 
 /* ══════════════════════════════════════════════════════════════════════════════
-   RUBRIQUE ENLÈVEMENT / DISPARITION — suivi GPS en direct
-   La personne en danger active le partage de sa position. Sa position est
-   envoyée automatiquement à 3 contacts désignés et se met à jour en continu
-   (via watchPosition) à chaque déplacement réel détecté par le GPS, sans
-   action supplémentaire de sa part. Côté destinataire, la position affichée
-   se synchronise dès que le partage émetteur est actualisé (état partagé en
-   temps réel au niveau de l'app, voir partagesGps dans AlerteCI).
+   RUBRIQUE ENLÈVEMENT / DISPARITION — position toujours active, consultée
+   à la demande. La position de l'utilisateur se met à jour en continu en
+   arrière-plan (service natif, démarré automatiquement à la connexion —
+   voir BgLocation dans AlerteCI) sans jamais être poussée à personne. Un
+   contact de confiance ne peut la consulter qu'en recherchant explicitement
+   le numéro, et seulement s'il est autorisé (vérifié côté serveur par
+   supabase-edge-function/localiser-contact via la table contacts_confiance).
 ══════════════════════════════════════════════════════════════════════════════ */
-const Enlevement = ({go,goBack,userInfo={},partagesGps=[],demarrerPartageGps,arreterPartageGps,majPositionGps}) => {
+const Enlevement = ({go,goBack,userInfo={}}) => {
   const nom = userInfo.nm && userInfo.nm.trim() ? userInfo.nm.trim() : "l'utilisateur";
   const [contacts,setContacts]=useState(()=>{
     try{ const s=window.localStorage.getItem("alerteci_contacts_enlevement"); return s?JSON.parse(s):[]; }catch(e){ return []; }
   });
   useEffect(()=>{ try{ window.localStorage.setItem("alerteci_contacts_enlevement", JSON.stringify(contacts)); }catch(e){} },[contacts]);
+  /* ── Synchronisation nationale des contacts de confiance ────────────────
+     Indispensable : c'est CETTE liste, côté serveur, que la fonction
+     localiser-contact consulte pour vérifier qu'un numéro qui recherche ma
+     position a bien le droit de la voir. Sans cette synchronisation, la
+     recherche échouerait toujours, même pour un contact réellement ajouté. */
+  useEffect(()=>{
+    if(!userInfo.ph) return;
+    cloudUpsert("contacts_confiance", {telephone:userInfo.ph, enlevement:contacts}, "telephone").catch(()=>{});
+  },[contacts, userInfo.ph]);
   const [editContact,setEditContact]=useState(null); // null | {idx?, nm, ph}
   const COULEURS=["#7C3AED","#2563EB","#16A34A","#F97316","#EC4899","#0EA5E9"];
   const [notifContactEnvoyee,setNotifContactEnvoyee]=useState(null);
 
-  const [partageActif,setPartageActif]=useState(false);
-  const [position,setPosition]=useState(null); // {lat,lng,precision,ts}
-  const [erreurGps,setErreurGps]=useState("");
-  const watchIdRef=useRef(null);
-  const monPartageId=useRef(`moi-${Date.now()}`);
+  /* ── Recherche de la position d'un contact (modèle « à la demande ») ────
+     Ma propre position se met à jour en continu en arrière-plan dès la
+     connexion (voir BgLocation.start, déclenché au niveau racine) sans
+     jamais être poussée à personne. Un contact qui m'a comme numéro
+     enregistré chez lui recherche MON numéro ici pour obtenir ma position
+     en direct — la fonction serveur localiser-contact vérifie d'abord qu'il
+     figure bien dans ma liste de contacts de confiance. ── */
+  const [rechNum,setRechNum]=useState("");
+  const [rechResultat,setRechResultat]=useState(null); // {lat,lng,precision,updatedAt}
+  const [rechErreur,setRechErreur]=useState("");
+  const [rechEnCours,setRechEnCours]=useState(false);
+  const rechIntervalRef=useRef(null);
 
-  /* ── Note vocale de signalement jointe au partage GPS ──────────────────
-     Enregistrée une fois (5s max) au moment de l'activation du partage,
-     elle est envoyée avec la position à chaque contact de confiance et
-     reste accessible/écoutable depuis l'écran tant que le partage est actif. */
-  const [noteVocale,setNoteVocale]=useState(null); // {url, duree}
-  const [enregNote,setEnregNote]=useState(false); // enregistrement en cours
-  const [lectureNote,setLectureNote]=useState(false);
-  const noteRecorderRef=useRef(null);
-  const noteStreamRef=useRef(null);
-  const noteChunksRef=useRef([]);
-  const noteDebutRef=useRef(0);
-  const notePlayerRef=useRef(null);
+  const rechercherPosition=async(silencieux)=>{
+    if(rechNum.length!==10) return;
+    if(!silencieux){ setRechEnCours(true); setRechErreur(""); }
+    const res=await fetch(`${SB_URL}/functions/v1/localiser-contact`,{
+      method:"POST", headers:{"Content-Type":"application/json","apikey":SB_KEY},
+      body:JSON.stringify({demandeur:userInfo.ph, cible:rechNum}),
+    }).then(r=>r.json()).catch(()=>({error:"RESEAU"}));
+    setRechEnCours(false);
+    if(res.error){
+      setRechResultat(null);
+      clearInterval(rechIntervalRef.current);
+      setRechErreur(
+        res.error==="NON_AUTORISE" ? "Ce numéro ne vous a pas enregistré comme contact de confiance."
+        : res.error==="POSITION_INDISPONIBLE" ? "Ce numéro n'a pas encore de position disponible (l'app doit être installée et ouverte au moins une fois, avec la localisation autorisée)."
+        : res.error==="TROP_DE_TENTATIVES" ? "Trop de recherches, réessayez dans une minute."
+        : "Numéro introuvable ou erreur réseau."
+      );
+      return;
+    }
+    setRechErreur("");
+    setRechResultat(res);
+    if(!silencieux){
+      clearInterval(rechIntervalRef.current);
+      rechIntervalRef.current=setInterval(()=>rechercherPosition(true),15000);
+    }
+  };
+  useEffect(()=>()=>clearInterval(rechIntervalRef.current),[]);
+  const rechSecEcoulees = rechResultat ? Math.max(0,Math.round((Date.now()-new Date(rechResultat.updatedAt).getTime())/1000)) : null;
 
   const saveContact=()=>{
     if(!editContact||!editContact.nm.trim()||editContact.ph.length<10) return;
@@ -2779,309 +2818,66 @@ const Enlevement = ({go,goBack,userInfo={},partagesGps=[],demarrerPartageGps,arr
 
   const supprimerContact=(i)=>setContacts(p=>p.filter((_,j)=>j!==i));
 
-  /* ── Enregistrement de la note vocale de signalement (5s max) ───────────
-     Jointe automatiquement à la position GPS transmise aux contacts. */
-  const enregistrerNoteVocale=async()=>{
-    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia||!window.MediaRecorder){
-      return;
-    }
-    setEnregNote(true);
-    let stream;
-    const securite=setTimeout(()=>{
-      setEnregNote(false);
-      try{ noteStreamRef.current&&noteStreamRef.current.getTracks().forEach(t=>t.stop()); }catch(e){}
-    },4000);
-    try{
-      stream=await navigator.mediaDevices.getUserMedia({audio:true});
-    }catch(e){
-      clearTimeout(securite);
-      setEnregNote(false);
-      return;
-    }
-    clearTimeout(securite);
-    noteStreamRef.current=stream;
-    noteChunksRef.current=[];
-    noteDebutRef.current=Date.now();
-    let mr;
-    try{
-      mr=new window.MediaRecorder(stream);
-    }catch(e){
-      stream.getTracks().forEach(t=>t.stop());
-      setEnregNote(false);
-      return;
-    }
-    mr.ondataavailable=(e)=>{ if(e.data&&e.data.size>0) noteChunksRef.current.push(e.data); };
-    mr.onstop=()=>{
-      const duree=Math.max(0.1,(Date.now()-noteDebutRef.current)/1000);
-      const blob=new Blob(noteChunksRef.current,{type:mr.mimeType||"audio/webm"});
-      const url=URL.createObjectURL(blob);
-      setNoteVocale({url,duree});
-      setEnregNote(false);
-      try{ stream.getTracks().forEach(t=>t.stop()); }catch(e){}
-      playNotif();
-    };
-    noteRecorderRef.current=mr;
-    try{
-      mr.start();
-      setTimeout(()=>{ try{ if(mr.state==="recording") mr.stop(); }catch(e){} },5000);
-    }catch(e){
-      stream.getTracks().forEach(t=>t.stop());
-      setEnregNote(false);
-    }
-  };
-
-  const arreterEnregNote=()=>{
-    try{ noteRecorderRef.current&&noteRecorderRef.current.state==="recording"&&noteRecorderRef.current.stop(); }catch(e){}
-    try{ noteStreamRef.current&&noteStreamRef.current.getTracks().forEach(t=>t.stop()); }catch(e){}
-    setEnregNote(false);
-  };
-
-  /* ── Démarrage du partage GPS en direct ──────────────────────────────────
-     watchPosition déclenche un nouvel envoi à chaque actualisation réelle de
-     la position par le GPS de l'appareil — aucune action manuelle requise. */
-  /* Envoi throttlé de la position aux contacts de confiance : le serveur
-     achemine le lien de position en direct vers leurs numéros. */
-  const dernierEnvoiRef=useRef(0);
-  const retryGpsRef=useRef(null);
-  const envoyerPositionAuxContacts=(p)=>{
-    const maintenant=Date.now();
-    if(maintenant-dernierEnvoiRef.current<10000 && p) return; // max 1 envoi / 10s
-    dernierEnvoiRef.current=maintenant;
-    cloudPublierUrgence({
-      type:"gps",
-      alerteId:monPartageId.current,
-      victime:{ nm:nom, ph:userInfo.ph||"" },
-      cibles:contacts.map(c=>c.ph),
-      gps:p?{lat:p.lat,lng:p.lng,precision:p.precision}:null,
-      lienMaps:p?`https://maps.google.com/?q=${p.lat},${p.lng}`:null,
-      ts:maintenant,
-    });
-  };
-
-  const activerPartage=()=>{
-    setErreurGps("");
-    setPartageActif(true);
-    demarrerPartageGps&&demarrerPartageGps(monPartageId.current,nom);
-    /* IMPORTANT : aucune sirène ICI. La position part immédiatement vers
-       les contacts de confiance, et c'est CHEZ EUX que l'alarme sonne en
-       continu, avec le suivi de position en direct. Le téléphone de la
-       personne suivie reste discret. */
-    playNotif();
-
-    /* 1. Les contacts de confiance sont prévenus IMMÉDIATEMENT, même si la
-       position n'est pas encore disponible — le lien suivra dès qu'elle l'est. */
-    dernierEnvoiRef.current=0;
-    envoyerPositionAuxContacts(null);
-    dernierEnvoiRef.current=0;
-
-    const traiterPosition=(pos)=>{
-      const p={
-        lat:pos.coords.latitude, lng:pos.coords.longitude,
-        precision:Math.round(pos.coords.accuracy||0), ts:Date.now(),
-      };
-      setErreurGps("");
-      setPosition(p);
-      majPositionGps&&majPositionGps(monPartageId.current,{
-        id:monPartageId.current, nom, ph:userInfo.ph||"",
-        lat:p.lat, lng:p.lng, precision:p.precision, ts:p.ts,
-        contacts:contacts.map(c=>c.nm),
-        noteVocale:noteVocale,
-      });
-      envoyerPositionAuxContacts(p);
-    };
-
-    /* 2. Suivi continu, avec relance automatique : tant qu'aucune position
-       n'arrive, on redemande toutes les 10 secondes — le partage n'est
-       jamais bloqué, il attend simplement l'autorisation ou le signal GPS. */
-    if(navigator.geolocation){
-      watchIdRef.current=navigator.geolocation.watchPosition(
-        traiterPosition,
-        ()=>{ setErreurGps("Recherche de position en cours… Si votre téléphone demande l'autorisation de localisation, acceptez-la : le partage démarrera tout seul."); },
-        {enableHighAccuracy:true,maximumAge:0,timeout:15000}
-      );
-      retryGpsRef.current=setInterval(()=>{
-        navigator.geolocation.getCurrentPosition(traiterPosition,()=>{},{enableHighAccuracy:true,timeout:8000,maximumAge:0});
-      },10000);
-    } else {
-      setErreurGps("Recherche de position en cours… Le lien sera transmis à vos contacts dès qu'une position est disponible.");
-    }
-  };
-
-  const arreterPartage=()=>{
-    if(watchIdRef.current!==null){
-      try{ navigator.geolocation.clearWatch(watchIdRef.current); }catch(e){}
-      watchIdRef.current=null;
-    }
-    clearInterval(retryGpsRef.current);
-    /* Prévenir les contacts que le partage est terminé. */
-    cloudPublierUrgence({
-      type:"gps", fin:true, alerteId:monPartageId.current,
-      victime:{ nm:nom, ph:userInfo.ph||"" },
-      cibles:contacts.map(c=>c.ph), ts:Date.now(),
-    });
-    monPartageId.current=`moi-${Date.now()}`;
-    setErreurGps("");
-    setPartageActif(false);
-    arreterPartageGps&&arreterPartageGps(monPartageId.current);
-  };
-
-  useEffect(()=>()=>{
-    if(watchIdRef.current!==null){
-      try{ navigator.geolocation.clearWatch(watchIdRef.current); }catch(e){}
-    }
-    clearInterval(retryGpsRef.current);
-    try{ noteRecorderRef.current&&noteRecorderRef.current.state==="recording"&&noteRecorderRef.current.stop(); }catch(e){}
-    try{ noteStreamRef.current&&noteStreamRef.current.getTracks().forEach(t=>t.stop()); }catch(e){}
-  },[]);
-
-  const dureeEcoulee = position ? Math.max(0,Math.round((Date.now()-position.ts)/1000)) : null;
-
   return (
     <div className="scr on" style={{display:"flex"}}>
       <div className="scrl">
         <div className="scrhdr">
-          <button className="bk" onClick={goBack}><I n="back" s={18} c={partageActif?"#7C3AED":C.ink}/></button>
-          <p className="scrttl" style={{color:partageActif?"#7C3AED":C.ink}}>
-            {partageActif?"🟣 PARTAGE GPS ACTIF":"Alerte Enlèvement"}
-          </p>
+          <button className="bk" onClick={goBack}><I n="back" s={18} c={C.ink}/></button>
+          <p className="scrttl">Alerte Enlèvement</p>
         </div>
 
-        <div className="vhero" style={{background:partageActif?"linear-gradient(145deg,#4C1D95,#6D28D9)":"linear-gradient(145deg,#312E81,#4338CA)"}}>
+        <div className="vhero" style={{background:"linear-gradient(145deg,#312E81,#4338CA)"}}>
           <div className="pr">
-            <div className="pi" style={{background:partageActif?"#7C3AED":"#4F46E5"}}>
+            <div className="pi" style={{background:"#4F46E5"}}>
               <I n="pin" s={28} c="#fff"/>
             </div>
           </div>
-          <p className="hl">{partageActif?"📍 Position partagée en direct":"Suivi GPS contre les disparitions"}</p>
-          <p className="ht">{partageActif?"Vos contacts vous suivent en temps réel":"Prêt à activer le partage"}</p>
+          <p className="hl">🟢 Position toujours active</p>
+          <p className="ht">Votre position se met à jour en continu</p>
           <p className="hd">
-            {partageActif
-              ?`Votre position se met à jour automatiquement et s'affiche en direct chez vos ${contacts.length||3} contacts de confiance, qui voient votre déplacement à chaque actualisation GPS.`
-              :"En cas de disparition ou d'enlèvement présumé, activez le partage : votre position GPS sera envoyée en direct à vos contacts de confiance et se mettra à jour automatiquement."}
+            Elle n'est envoyée à personne automatiquement. Un contact de confiance ne peut la consulter qu'en recherchant explicitement votre numéro ci-dessous (sur son propre téléphone) — et uniquement si vous l'avez ajouté comme contact de confiance.
           </p>
         </div>
 
-        {erreurGps&&(
-          <div style={{margin:"0 20px 12px",background:"#FFF7ED",border:"1px solid rgba(249,115,22,.25)",borderRadius:14,padding:"12px 14px",display:"flex",alignItems:"center",gap:8}}>
-            <span style={{display:"inline-block",width:14,height:14,border:"2px solid rgba(249,115,22,.4)",borderTopColor:"#F97316",borderRadius:"50%",animation:"spin 1s linear infinite",flexShrink:0}}/>
-            <p style={{fontSize:12,color:"#9A3412",fontWeight:600,lineHeight:1.5}}>{erreurGps}</p>
-          </div>
-        )}
-
-        {partageActif&&position&&(
-          <div style={{margin:"0 20px 12px",background:"#fff",border:"1.5px solid rgba(124,58,237,.25)",borderRadius:16,padding:"14px 16px"}}>
-            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-              <div style={{width:10,height:10,borderRadius:"50%",background:"#7C3AED",animation:"bk 1.4s ease infinite",flexShrink:0}}/>
-              <p style={{fontSize:12,fontWeight:800,color:C.ink}}>Position actuelle</p>
-              <span style={{marginLeft:"auto",fontSize:10,fontWeight:700,color:C.muted}}>
-                {dureeEcoulee<5?"À l'instant":`Il y a ${dureeEcoulee}s`}
-              </span>
+        {/* ── Rechercher la position d'un contact de confiance ────────────── */}
+        <div style={{margin:"0 20px 16px",background:"#fff",border:"1.5px solid rgba(124,58,237,.25)",borderRadius:18,padding:"16px"}}>
+          <p style={{fontSize:13,fontWeight:800,color:C.ink,marginBottom:4}}>🔎 Rechercher un contact</p>
+          <p style={{fontSize:11,color:C.muted,lineHeight:1.5,marginBottom:12}}>Entrez le numéro de la personne qui vous a désigné(e) comme contact de confiance.</p>
+          <div style={{display:"flex",gap:8}}>
+            <div className="if" style={{flex:1,marginBottom:0,border:`1.5px solid ${rechNum.length===10?"rgba(124,58,237,.4)":C.border}`}}>
+              <I n="phone" s={16} c={C.faint}/>
+              <input type="tel" value={rechNum} maxLength={10}
+                onChange={e=>{setRechNum(e.target.value.replace(/\D/g,"").slice(0,10));setRechResultat(null);setRechErreur("");clearInterval(rechIntervalRef.current);}}
+                placeholder="Numéro (10 chiffres)"/>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
-              <div style={{background:C.surf,borderRadius:10,padding:"8px 10px"}}>
-                <p style={{fontSize:9,fontWeight:700,color:C.faint,textTransform:"uppercase"}}>Latitude</p>
-                <p style={{fontSize:13,fontWeight:700,color:C.ink,fontFamily:"monospace"}}>{position.lat.toFixed(5)}</p>
-              </div>
-              <div style={{background:C.surf,borderRadius:10,padding:"8px 10px"}}>
-                <p style={{fontSize:9,fontWeight:700,color:C.faint,textTransform:"uppercase"}}>Longitude</p>
-                <p style={{fontSize:13,fontWeight:700,color:C.ink,fontFamily:"monospace"}}>{position.lng.toFixed(5)}</p>
-              </div>
-            </div>
-            <p style={{fontSize:11,color:C.muted}}>Précision ≈ {position.precision}m · Mise à jour automatique à chaque déplacement</p>
-
-            <audio ref={notePlayerRef} style={{display:"none"}} onEnded={()=>setLectureNote(false)}/>
-            <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${C.border}`}}>
-              <p style={{fontSize:10,fontWeight:700,color:C.faint,textTransform:"uppercase",letterSpacing:".5px",marginBottom:6}}>🎙️ Note vocale de signalement</p>
-              {enregNote?(
-                <div style={{display:"flex",alignItems:"center",gap:8,background:"#FFF1F2",borderRadius:10,padding:"8px 10px"}}>
-                  <div style={{width:8,height:8,borderRadius:"50%",background:"#EF4444",animation:"bk 0.6s ease infinite",flexShrink:0}}/>
-                  <span style={{fontSize:12,fontWeight:700,color:"#EF4444",flex:1}}>🎙️ Enregistrement...</span>
-                  <button onClick={arreterEnregNote}
-                    style={{fontSize:10,fontWeight:700,color:C.faint,background:"#fff",border:`1px solid ${C.border}`,borderRadius:8,padding:"3px 8px",cursor:"pointer",fontFamily:"Plus Jakarta Sans"}}>✕</button>
-                </div>
-              ):noteVocale?(
-                <div style={{display:"flex",alignItems:"center",gap:8}}>
-                  <button
-                    onClick={()=>{
-                      if(!notePlayerRef.current) return;
-                      if(lectureNote){ notePlayerRef.current.pause(); setLectureNote(false); }
-                      else { notePlayerRef.current.src=noteVocale.url; notePlayerRef.current.play().catch(()=>{}); setLectureNote(true); }
-                    }}
-                    style={{display:"flex",alignItems:"center",gap:6,background:"#F5F3FF",border:"none",borderRadius:10,padding:"7px 12px",cursor:"pointer",fontFamily:"Plus Jakarta Sans",flex:1}}>
-                    <span style={{fontSize:13}}>{lectureNote?"⏸":"▶️"}</span>
-                    <span style={{fontSize:12,fontWeight:700,color:"#7C3AED"}}>
-                      {lectureNote?"Lecture...":`Note vocale · ${noteVocale.duree.toFixed(1)}s`}
-                    </span>
-                  </button>
-                  <button onClick={enregistrerNoteVocale}
-                    style={{fontSize:11,fontWeight:700,color:"#7C3AED",background:"#F5F3FF",border:"none",borderRadius:10,padding:"7px 10px",cursor:"pointer",fontFamily:"Plus Jakarta Sans",flexShrink:0}}>
-                    🔄
-                  </button>
-                </div>
-              ):(
-                <button onClick={enregistrerNoteVocale}
-                  style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,width:"100%",background:"#F5F3FF",border:"none",borderRadius:10,padding:"9px",cursor:"pointer",fontFamily:"Plus Jakarta Sans",fontSize:12,fontWeight:700,color:"#7C3AED"}}>
-                  <I n="mic" s={14} c="#7C3AED"/> Enregistrer une note vocale (5s max)
-                </button>
-              )}
-              <p style={{fontSize:10,color:C.faint,marginTop:6,lineHeight:1.4}}>Décrivez la situation à voix haute — cette note est envoyée avec votre position à vos 3 contacts de confiance.</p>
-            </div>
-
-            <a
-              href={`https://www.google.com/maps?q=${position.lat},${position.lng}`}
-              target="_blank" rel="noreferrer"
-              style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,marginTop:10,padding:"9px",borderRadius:10,background:"#F5F3FF",color:"#7C3AED",fontSize:12,fontWeight:700,textDecoration:"none",fontFamily:"Plus Jakarta Sans"}}>
-              <I n="pin" s={14} c="#7C3AED"/> Voir sur la carte
-            </a>
-
-            {/* ── Envoi du lien Google Maps de suivi aux contacts ─────────────
-               Chaque bouton ouvre le SMS ou WhatsApp du contact, déjà rempli
-               avec le lien Google Maps de la position ACTUELLE : le contact
-               qui l'ouvre est redirigé directement sur Google Maps, sur la
-               position exacte. Le lien est régénéré avec la dernière position
-               connue à chaque appui — renvoyer = actualiser le suivi. ── */}
-            <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${C.border}`}}>
-              <p style={{fontSize:10,fontWeight:700,color:C.faint,textTransform:"uppercase",letterSpacing:".5px",marginBottom:6}}>📤 Envoyer le lien de suivi aux contacts</p>
-              {contacts.length===0?(
-                <p style={{fontSize:11,color:C.muted,lineHeight:1.4}}>Ajoutez vos contacts de confiance ci-dessous : vous pourrez leur envoyer le lien Google Maps de votre position en un appui.</p>
-              ):(
-                <>
-                  {contacts.map((ct,i)=>{
-                    const lienMaps=`https://www.google.com/maps?q=${position.lat},${position.lng}`;
-                    const message=`🆘 ALERTE CI — ${nom} partage sa position GPS en direct. Suivez sa position sur Google Maps : ${lienMaps}`;
-                    const telInternational=`225${String(ct.ph).replace(/\D/g,"")}`;
-                    return (
-                      <div key={i} style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
-                        <div style={{width:28,height:28,borderRadius:9,background:ct.c,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,color:"#fff",flexShrink:0}}>{ct.in}</div>
-                        <span style={{fontSize:12,fontWeight:700,color:C.ink,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ct.nm}</span>
-                        <a href={`sms:${ct.ph}?&body=${encodeURIComponent(message)}`}
-                          style={{fontSize:11,fontWeight:700,color:"#7C3AED",background:"#F5F3FF",borderRadius:9,padding:"6px 10px",textDecoration:"none",fontFamily:"Plus Jakarta Sans",flexShrink:0}}>
-                          💬 SMS
-                        </a>
-                        <a href={`https://wa.me/${telInternational}?text=${encodeURIComponent(message)}`}
-                          target="_blank" rel="noreferrer"
-                          style={{fontSize:11,fontWeight:700,color:"#16A34A",background:C.greenL,borderRadius:9,padding:"6px 10px",textDecoration:"none",fontFamily:"Plus Jakarta Sans",flexShrink:0}}>
-                          🟢 WhatsApp
-                        </a>
-                      </div>
-                    );
-                  })}
-                  <p style={{fontSize:10,color:C.faint,marginTop:4,lineHeight:1.4}}>Le lien envoyé contient votre position au moment de l'envoi — renvoyez-le après un déplacement pour actualiser le suivi chez vos contacts.</p>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-
-        <div style={{padding:"0 20px 12px"}}>
-          {!partageActif?(
-            <button className="btn btn-p" style={{background:"linear-gradient(135deg,#7C3AED,#6D28D9)"}} onClick={activerPartage}>
-              <I n="pin" s={16} c="#fff"/>Activer le partage GPS en direct
+            <button onClick={()=>rechercherPosition(false)} disabled={rechNum.length!==10||rechEnCours}
+              style={{padding:"0 18px",borderRadius:14,border:"none",cursor:"pointer",background:"#7C3AED",color:"#fff",fontFamily:"Plus Jakarta Sans",fontSize:13,fontWeight:700,opacity:rechNum.length===10&&!rechEnCours?1:.5,flexShrink:0}}>
+              {rechEnCours?"...":"Rechercher"}
             </button>
-          ):(
-            <button className="btn btn-g" onClick={arreterPartage}>
-              <I n="check" s={16} c={C.ink}/>Arrêter le partage
-            </button>
+          </div>
+
+          {rechErreur&&(
+            <div style={{marginTop:12,background:"#FFF7ED",border:"1px solid rgba(249,115,22,.25)",borderRadius:12,padding:"10px 12px"}}>
+              <p style={{fontSize:12,color:"#9A3412",fontWeight:600,lineHeight:1.5}}>{rechErreur}</p>
+            </div>
+          )}
+
+          {rechResultat&&(
+            <div style={{marginTop:12,paddingTop:12,borderTop:`1px solid ${C.border}`}}>
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+                <div style={{width:10,height:10,borderRadius:"50%",background:"#7C3AED",animation:"bk 1.4s ease infinite",flexShrink:0}}/>
+                <p style={{fontSize:12,fontWeight:800,color:C.ink}}>Position trouvée</p>
+                <span style={{marginLeft:"auto",fontSize:10,fontWeight:700,color:rechSecEcoulees<60?C.green:C.muted}}>
+                  {rechSecEcoulees<5?"À l'instant":`Il y a ${rechSecEcoulees}s`}
+                </span>
+              </div>
+              <p style={{fontSize:11,color:C.muted,marginBottom:10}}>Précision ≈ {rechResultat.precision}m · Actualisation automatique toutes les 15 s</p>
+              <a href={`https://www.google.com/maps?q=${rechResultat.lat},${rechResultat.lng}`}
+                target="_blank" rel="noreferrer"
+                style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,padding:"10px",borderRadius:10,background:"#F5F3FF",color:"#7C3AED",fontSize:12,fontWeight:700,textDecoration:"none",fontFamily:"Plus Jakarta Sans"}}>
+                <I n="pin" s={14} c="#7C3AED"/> Voir sur la carte (en direct)
+              </a>
+            </div>
           )}
         </div>
 
@@ -3182,57 +2978,10 @@ const Enlevement = ({go,goBack,userInfo={},partagesGps=[],demarrerPartageGps,arr
           ))}
         </div>
 
-        {/* ── Positions reçues des contacts qui ont, eux aussi, activé leur
-               partage GPS (synchronisation automatique en temps réel) ── */}
-        {partagesGps.filter(p=>p.id!==monPartageId.current).length>0&&(
-          <>
-            <div className="sh" style={{marginTop:4}}>
-              <span className="stl">Positions reçues en direct</span>
-            </div>
-            <div style={{padding:"0 20px 8px",display:"flex",flexDirection:"column",gap:10}}>
-              {partagesGps.filter(p=>p.id!==monPartageId.current).map((p,i)=>{
-                const secEcoulees=Math.max(0,Math.round((Date.now()-p.ts)/1000));
-                return (
-                  <div key={p.id} className="si" style={{animationDelay:`${i*60}ms`,background:"#fff",border:"1.5px solid rgba(124,58,237,.2)",borderRadius:16,padding:"14px 16px"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
-                      <div style={{width:10,height:10,borderRadius:"50%",background:"#7C3AED",animation:"bk 1.4s ease infinite",flexShrink:0}}/>
-                      <p style={{fontSize:13,fontWeight:800,color:C.ink}}>{p.nom}</p>
-                      <span style={{marginLeft:"auto",fontSize:10,fontWeight:700,color:secEcoulees<30?C.green:C.muted}}>
-                        {secEcoulees<5?"À l'instant":`Il y a ${secEcoulees}s`}
-                      </span>
-                    </div>
-                    <p style={{fontSize:11,color:C.muted,marginBottom:8}}>
-                      Position synchronisée automatiquement · précision ≈ {p.precision}m
-                    </p>
-                    {p.noteVocale&&(
-                      <button
-                        onClick={()=>{
-                          if(!notePlayerRef.current) return;
-                          notePlayerRef.current.src=p.noteVocale.url;
-                          notePlayerRef.current.play().catch(()=>{});
-                        }}
-                        style={{display:"flex",alignItems:"center",gap:6,width:"100%",background:"#FFF7ED",border:"none",borderRadius:10,padding:"8px 10px",cursor:"pointer",fontFamily:"Plus Jakarta Sans",marginBottom:8}}>
-                        <span style={{fontSize:13}}>▶️</span>
-                        <span style={{fontSize:12,fontWeight:700,color:C.orange}}>Écouter la note vocale · {p.noteVocale.duree.toFixed(1)}s</span>
-                      </button>
-                    )}
-                    <a
-                      href={`https://www.google.com/maps?q=${p.lat},${p.lng}`}
-                      target="_blank" rel="noreferrer"
-                      style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,padding:"9px",borderRadius:10,background:"#F5F3FF",color:"#7C3AED",fontSize:12,fontWeight:700,textDecoration:"none",fontFamily:"Plus Jakarta Sans"}}>
-                      <I n="pin" s={14} c="#7C3AED"/> Suivre sur la carte
-                    </a>
-                  </div>
-                );
-              })}
-            </div>
-          </>
-        )}
-
         <div style={{padding:"8px 20px 20px"}}>
           <div style={{background:"#F5F3FF",border:"1px solid rgba(124,58,237,.2)",borderRadius:14,padding:"12px 14px"}}>
             <p style={{fontSize:12,fontWeight:700,color:"#7C3AED",marginBottom:4}}>ℹ️ Comment ça marche</p>
-            <p style={{fontSize:12,color:C.muted,lineHeight:1.5}}>Une fois activé, le partage GPS envoie automatiquement votre position à vos contacts à chaque déplacement détecté — aucune action de votre part n'est requise. Chez vos contacts, la position affichée se synchronise et s'actualise dès qu'ils ouvrent ou rafraîchissent l'écran.</p>
+            <p style={{fontSize:12,color:C.muted,lineHeight:1.5}}>Votre position se met à jour en continu en arrière-plan, dès que vous êtes connecté(e) — même app fermée. Elle n'est <strong>jamais envoyée</strong> à qui que ce soit automatiquement. Un contact que vous avez ajouté ci-dessous peut la consulter à tout moment, mais uniquement en la recherchant lui-même par votre numéro depuis son propre téléphone.</p>
           </div>
         </div>
       </div>
@@ -4522,7 +4271,10 @@ const Paiement = ({go,goBack,onSuccess}) => {
 
 /* ── INSCRIPTION ─────────────────────────────────────────────────────────────── */
 const Signup = ({go,goBack,onSignup,userInfo={},comptesInscrits=[],typesService=TYPES_SERVICE_DEFAUT}) => {
-  const [type,setType]=useState(null); // "user" | "service"
+  /* Le parcours "Service public / Institution" est masqué pour cette
+     version (voir FEATURES.institutionSignup) : on saute directement au
+     formulaire citoyen, sans supprimer le code de l'autre parcours. */
+  const [type,setType]=useState(FEATURES.institutionSignup?null:"user"); // "user" | "service"
   const [plan,setPlan]=useState("premium");
   const [cgu,setCgu]=useState(false);
   const [nm,setNm]=useState("");
@@ -4716,7 +4468,7 @@ const Signup = ({go,goBack,onSignup,userInfo={},comptesInscrits=[],typesService=
   return (
     <div className="scr on" style={{display:"flex"}}>
       <div className="scrhdr">
-        <button className="bk" onClick={()=>setType(null)}><I n="back" s={18} c={C.ink}/></button>
+        <button className="bk" onClick={()=>FEATURES.institutionSignup?setType(null):goBack()}><I n="back" s={18} c={C.ink}/></button>
         <p className="scrttl">Compte Utilisateur</p>
       </div>
       <div className="isc">
@@ -5698,7 +5450,7 @@ const AdminGate = ({onAuth}) => {
 
 const AdminDashboard = ({go,goBack,comptesInscrits=[],validerCompteInstitution,typesServiceDisponibles=[],ajouterTypeService,retirerTypeService}) => {
   const [adminSession,setAdminSession]=useState(null);
-  const [tab,setTab]=useState("comptes"); // "comptes" | "utilisateurs" | "forfaits" | "types"
+  const [tab,setTab]=useState(FEATURES.institutionSignup?"comptes":"utilisateurs"); // "comptes" | "utilisateurs" | "forfaits" | "types" | "admins"
   const [nouveauType,setNouveauType]=useState("");
   const [utilisateurs,setUtilisateurs]=useState([]);
   const [forfaits,setForfaits]=useState([]);
@@ -5706,6 +5458,12 @@ const AdminDashboard = ({go,goBack,comptesInscrits=[],validerCompteInstitution,t
   const [bonusJours,setBonusJours]=useState("30");
   const [bonusMotif,setBonusMotif]=useState("");
   const [adminMsg,setAdminMsg]=useState("");
+  const [admins,setAdmins]=useState([]);
+  const [nvAdminNom,setNvAdminNom]=useState("");
+  const [nvAdminTel,setNvAdminTel]=useState("");
+  const [nvAdminCode,setNvAdminCode]=useState("");
+  const [nvAdminRole,setNvAdminRole]=useState("editeur");
+  const [adminAdminMsg,setAdminAdminMsg]=useState("");
 
   const chargerUtilisateurs=async()=>{
     const res = await adminApi(adminSession, "list_users", {});
@@ -5715,10 +5473,15 @@ const AdminDashboard = ({go,goBack,comptesInscrits=[],validerCompteInstitution,t
     const res = await adminApi(adminSession, "list_forfaits", {});
     if(!res.error) setForfaits(res.forfaits||[]);
   };
+  const chargerAdmins=async()=>{
+    const res = await adminApi(adminSession, "list_admins", {});
+    if(!res.error) setAdmins(res.admins||[]);
+  };
   useEffect(()=>{
     if(!adminSession) return;
     if(tab==="utilisateurs") chargerUtilisateurs();
     if(tab==="forfaits") chargerForfaits();
+    if(tab==="admins") chargerAdmins();
   },[adminSession, tab]);
 
   const basculerBlocage=async(telephone,bloque)=>{
@@ -5737,6 +5500,23 @@ const AdminDashboard = ({go,goBack,comptesInscrits=[],validerCompteInstitution,t
     setAdminMsg(`Bonus de ${bonusJours} jours offert au ${bonusTel} ✓`);
     setBonusTel(""); setBonusMotif("");
   };
+  const creerAdmin=async()=>{
+    setAdminAdminMsg("");
+    if(!nvAdminNom.trim()||nvAdminTel.length!==10||nvAdminCode.length!==6){
+      setAdminAdminMsg("Nom, numéro (10 chiffres) et code (6 chiffres) requis."); return;
+    }
+    const res = await adminApi(adminSession, "create_admin", {
+      nom:saneTxt(nvAdminNom,80), telephone:nvAdminTel, code:nvAdminCode, role:nvAdminRole,
+    });
+    if(res.error){ setAdminAdminMsg(res.error); return; }
+    setAdminAdminMsg(`Administrateur ${nvAdminNom} créé ✓`);
+    setNvAdminNom(""); setNvAdminTel(""); setNvAdminCode(""); setNvAdminRole("editeur");
+    chargerAdmins();
+  };
+  const basculerAdminActif=async(telephone,actif)=>{
+    const res = await adminApi(adminSession, "toggle_admin", {telephone, actif:!actif});
+    if(!res.error) chargerAdmins();
+  };
 
   if(!adminSession) return <AdminGate onAuth={setAdminSession}/>;
 
@@ -5753,7 +5533,13 @@ const AdminDashboard = ({go,goBack,comptesInscrits=[],validerCompteInstitution,t
         </div>
 
         <div style={{padding:"16px 20px 0",display:"flex",gap:8,overflowX:"auto"}}>
-          {[{id:"comptes",lb:`Institutions (${enAttente.length})`},{id:"utilisateurs",lb:"Utilisateurs"},{id:"forfaits",lb:"Forfaits & bonus"},{id:"types",lb:"Types de service"}].map(t=>(
+          {[
+            ...(FEATURES.institutionSignup?[{id:"comptes",lb:`Institutions (${enAttente.length})`}]:[]),
+            {id:"utilisateurs",lb:"Utilisateurs"},
+            {id:"forfaits",lb:"Forfaits & bonus"},
+            ...(FEATURES.institutionSignup?[{id:"types",lb:"Types de service"}]:[]),
+            {id:"admins",lb:"Administrateurs"},
+          ].map(t=>(
             <button key={t.id} onClick={()=>setTab(t.id)} style={{flexShrink:0,padding:"10px 14px",borderRadius:12,border:"none",cursor:"pointer",fontFamily:"Plus Jakarta Sans",fontSize:12,fontWeight:700,whiteSpace:"nowrap",background:tab===t.id?C.ink:"#fff",color:tab===t.id?"#fff":C.muted,boxShadow:tab===t.id?"0 4px 14px rgba(0,0,0,.15)":"none",border:tab===t.id?"none":`1px solid ${C.border}`}}>
               {t.lb}
             </button>
@@ -5904,6 +5690,49 @@ const AdminDashboard = ({go,goBack,comptesInscrits=[],validerCompteInstitution,t
           </div>
         )}
 
+        {tab==="admins"&&(
+          <div style={{padding:"16px 20px",display:"flex",flexDirection:"column",gap:10}}>
+            <p style={{fontSize:12,color:C.muted,lineHeight:1.5}}>Créez un nouvel accès administrateur (numéro + code à 6 chiffres). Le code est haché immédiatement côté serveur, jamais stocké en clair.</p>
+            <div className="ig">
+              <div className="if"><I n="user" s={16} c={C.faint}/>
+                <input type="text" value={nvAdminNom} onChange={e=>setNvAdminNom(e.target.value)} placeholder="Nom de l'administrateur"/>
+              </div>
+              <div className="if"><I n="phone" s={16} c={C.faint}/>
+                <input type="tel" value={nvAdminTel} onChange={e=>setNvAdminTel(saneTel(e.target.value))} placeholder="Numéro (10 chiffres)" maxLength={10}/>
+              </div>
+              <div className="if"><I n="lock" s={16} c={C.faint}/>
+                <input type="password" inputMode="numeric" value={nvAdminCode} onChange={e=>setNvAdminCode(saneCode(e.target.value))} placeholder="Code d'accès (6 chiffres)" maxLength={6}/>
+              </div>
+              <div className="if">
+                <I n="star" s={16} c={C.faint}/>
+                <select value={nvAdminRole} onChange={e=>setNvAdminRole(e.target.value)} style={{flex:1,border:"none",outline:"none",background:"transparent",fontFamily:"'Plus Jakarta Sans',sans-serif",fontSize:15,fontWeight:500,color:C.ink,appearance:"none"}}>
+                  <option value="editeur">Éditeur</option>
+                  <option value="super">Super administrateur</option>
+                </select>
+              </div>
+            </div>
+            <button onClick={creerAdmin} style={{padding:"12px",borderRadius:12,border:"none",cursor:"pointer",background:C.ink,color:"#fff",fontFamily:"Plus Jakarta Sans",fontSize:13,fontWeight:700}}>
+              Créer l'administrateur
+            </button>
+            {adminAdminMsg&&<p style={{fontSize:12,color:C.muted,textAlign:"center"}}>{adminAdminMsg}</p>}
+
+            <p className="fst">Administrateurs existants</p>
+            {admins.map(a=>(
+              <div key={a.telephone} style={{display:"flex",alignItems:"center",gap:10,background:"#fff",border:`1px solid ${C.border}`,borderRadius:14,padding:"12px 14px"}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <p style={{fontSize:13,fontWeight:700,color:C.ink}}>{a.nom}</p>
+                  <p style={{fontSize:10,color:C.muted}}>{a.telephone} · {a.role==="super"?"Super administrateur":"Éditeur"}</p>
+                </div>
+                <button onClick={()=>basculerAdminActif(a.telephone,a.actif)}
+                  style={{fontSize:11,fontWeight:700,padding:"6px 10px",borderRadius:8,border:"none",cursor:"pointer",fontFamily:"Plus Jakarta Sans",background:a.actif?"#FFF1F2":C.greenL,color:a.actif?"#DC2626":C.green}}>
+                  {a.actif?"Désactiver":"Réactiver"}
+                </button>
+              </div>
+            ))}
+            {admins.length===0&&<p style={{fontSize:12,color:C.faint,textAlign:"center",padding:"12px 0"}}>Chargement...</p>}
+          </div>
+        )}
+
         {tab==="types"&&(
           <div style={{padding:"16px 20px",display:"flex",flexDirection:"column",gap:10}}>
             <p style={{fontSize:12,color:C.muted,lineHeight:1.5}}>Ces types de service apparaissent dans la liste déroulante de l'inscription institutionnelle.</p>
@@ -5975,6 +5804,22 @@ export default function AlerteCI() {
     /* 5 s après la connexion : laisse la navigation et les éventuelles
        autres popups système se terminer avant de demander le push. */
     const t=setTimeout(()=>initialiserPush(userInfo.ph), 5000);
+    return ()=>clearTimeout(t);
+  },[userInfo.ph]);
+  /* ── Position « toujours active » (rubrique Enlèvement) ──────────────────
+     Démarre le suivi natif en arrière-plan dès la connexion (institution
+     exclue — non concernée), sans jamais pousser la position à personne :
+     elle n'est consultable que via une recherche autorisée par numéro (voir
+     Enlevement + supabase-edge-function/localiser-contact). Ne fait rien si
+     la coque n'a pas le plugin (ex. aperçu navigateur). */
+  useEffect(()=>{
+    if(!userInfo.ph || userInfo.plan==="institution") return;
+    const t=setTimeout(()=>{
+      try{
+        const BL=window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.BgLocation;
+        if(BL) enchainerNatif(()=>BL.start({phone:userInfo.ph}));
+      }catch(e){}
+    }, 6000);
     return ()=>clearTimeout(t);
   },[userInfo.ph]);
 
@@ -6274,29 +6119,6 @@ export default function AlerteCI() {
     });
   };
 
-  /* ── Partages GPS en direct (rubrique Enlèvement / Disparition) ──────────
-     Chaque partage actif est un objet {id, nom, ph, lat, lng, precision, ts,
-     contacts}. La mise à jour de la position se fait en continu via
-     majPositionGps (appelé par watchPosition côté émetteur), et tous les
-     écrans qui consultent partagesGps se synchronisent automatiquement dès
-     que cet état change — c'est ce qui permet au destinataire de voir la
-     position se mettre à jour à chaque actualisation. ── */
-  const [partagesGps,setPartagesGps]=useState([]);
-
-  const demarrerPartageGps=(id,nom)=>{
-    setPartagesGps(prev=>prev.some(p=>p.id===id)?prev:[...prev,{id,nom,lat:null,lng:null,precision:null,ts:Date.now(),contacts:[]}]);
-  };
-  const majPositionGps=(id,data)=>{
-    setPartagesGps(prev=>{
-      const existe=prev.some(p=>p.id===id);
-      if(existe) return prev.map(p=>p.id===id?{...p,...data}:p);
-      return [...prev,data];
-    });
-  };
-  const arreterPartageGps=(id)=>{
-    setPartagesGps(prev=>prev.filter(p=>p.id!==id));
-  };
-
   /* ── REGISTRE CENTRAL DES COMPTES CRÉÉS — PERSISTANT ─────────────────────
      Chaque inscription (citoyen ou institution) est conservée ici avec son
      numéro et son code d'accès, afin que l'écran de Connexion puisse
@@ -6372,6 +6194,10 @@ export default function AlerteCI() {
      démarrage malgré la déconnexion. Le compte lui-même reste dans le
      registre comptesInscrits : seule la session active est effacée. ── */
   const seDeconnecter=()=>{
+    try{
+      const BL=window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.BgLocation;
+      if(BL) enchainerNatif(()=>BL.stop());
+    }catch(e){}
     cloudSetFbSession(null);
     setUserInfo({nm:"",ph:"",mail:"",commune:"",plan:"gratuit"});
     setPlan("gratuit");
@@ -6432,7 +6258,7 @@ export default function AlerteCI() {
     login:<Login go={go} goBack={goBack} setPlan={setPlan} setUserInfo={setUserInfo} userInfo={userInfo} comptesInscrits={comptesInscrits}/>,
     home:<Home go={go} plan={plan} userInfo={userInfo} alertesPubliques={alertesPubliques}/>,
     violence:<Violence go={go} goBack={goBack} userInfo={userInfo}/>,
-    enlevement:<Enlevement go={go} goBack={goBack} userInfo={userInfo} partagesGps={partagesGps} demarrerPartageGps={demarrerPartageGps} arreterPartageGps={arreterPartageGps} majPositionGps={majPositionGps}/>,
+    enlevement:<Enlevement go={go} goBack={goBack} userInfo={userInfo}/>,
 
     planning:<Planning go={go} goBack={goBack}/>,
     info:<Info go={go} goBack={goBack} plan={plan} alertesPubliques={alertesPubliques}/>,

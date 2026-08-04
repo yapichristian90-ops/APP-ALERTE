@@ -131,9 +131,18 @@ public class LocationForegroundService extends Service implements LocationListen
         long now = System.currentTimeMillis();
         if (now - lastPost < 12000) return;
         lastPost = now;
-        SupabaseHelper.publishPosition(phone, nom, cibles,
-                location.getLatitude(), location.getLongitude(),
-                (int) location.getAccuracy(), alerteId);
+        // Position "toujours active" : mise à jour en continu, jamais poussée
+        // à personne — consultable uniquement via une recherche autorisée
+        // (voir localiser-contact).
+        SupabaseHelper.publishLivePosition(phone, location.getLatitude(), location.getLongitude(),
+                (int) location.getAccuracy());
+        // Rétrocompatibilité : si une alerte (violence/enlèvement) a explicitement
+        // ciblé des contacts, on continue aussi de la leur pousser directement.
+        if (cibles != null && cibles.length > 0) {
+            SupabaseHelper.publishPosition(phone, nom, cibles,
+                    location.getLatitude(), location.getLongitude(),
+                    (int) location.getAccuracy(), alerteId);
+        }
     }
 
     @Override public void onProviderEnabled(String provider) { }

@@ -180,6 +180,48 @@ Deno.serve(async (req) => {
       return jsonRes({ ok: true, premiumExpire: nouvelleDate });
     }
 
+    if (action === "list_admins") {
+      const r = await fetch(
+        `${SB_URL}/rest/v1/admins?select=nom,telephone,role,actif&order=nom.asc`,
+        { headers: sbHeaders(SB_KEY) },
+      );
+      const admins = await r.json();
+      return jsonRes({ admins: Array.isArray(admins) ? admins : [] });
+    }
+
+    // Les deux actions suivantes modifient les accès administrateur :
+    // réservées aux comptes "super", pour qu'un simple éditeur ne puisse
+    // pas se créer (ou créer un tiers) un accès plus large que le sien.
+    if (action === "create_admin" || action === "toggle_admin") {
+      if (admin.role !== "super") return jsonRes({ error: "ACCES_REFUSE" }, 403);
+    }
+
+    if (action === "create_admin") {
+      const tel = dl(payload.telephone);
+      const nvCode = String(payload.code ?? "").replace(/\D/g, "").slice(0, 6);
+      const nom = String(payload.nom ?? "").slice(0, 80).trim();
+      const role = payload.role === "super" ? "super" : "editeur";
+      if (tel.length !== 10 || nvCode.length !== 6 || !nom) return jsonRes({ error: "DONNEES_INVALIDES" }, 400);
+      const salt = crypto.randomUUID();
+      const hash = await sha256Hex(salt + nvCode);
+      await fetch(`${SB_URL}/rest/v1/admins?on_conflict=telephone`, {
+        method: "POST",
+        headers: { ...sbHeaders(SB_KEY), Prefer: "resolution=merge-duplicates" },
+        body: JSON.stringify({ nom, telephone: tel, salt, code_hash: hash, code: null, role, actif: true, permissions: [] }),
+      });
+      return jsonRes({ ok: true });
+    }
+
+    if (action === "toggle_admin") {
+      const tel = dl(payload.telephone);
+      if (tel.length !== 10) return jsonRes({ error: "NUMERO_INVALIDE" }, 400);
+      await fetch(`${SB_URL}/rest/v1/admins?telephone=eq.${tel}`, {
+        method: "PATCH", headers: sbHeaders(SB_KEY),
+        body: JSON.stringify({ actif: !!payload.actif }),
+      });
+      return jsonRes({ ok: true });
+    }
+
     return jsonRes({ error: "ACTION_INCONNUE" }, 400);
   } catch (e) {
     return jsonRes({ error: "Erreur serveur : " + (e as Error).message }, 500);
