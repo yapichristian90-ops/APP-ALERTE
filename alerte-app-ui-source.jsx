@@ -301,7 +301,7 @@ const Nav = ({ a, go }) => {
 };
 
 /* ── ÉCRAN ACCÈS RAPIDE (déjà inscrit) — PIN ou empreinte ─── */
-const AccesRapide = ({go,userInfo={},onAcces}) => {
+const AccesRapide = ({go,userInfo={},onAcces,comptesInscrits=[],seDeconnecter}) => {
   const [pin,setPin]=useState("");
   const [err,setErr]=useState("");
   const [bioDispo,setBioDispo]=useState(false);
@@ -309,9 +309,23 @@ const AccesRapide = ({go,userInfo={},onAcces}) => {
   const nom=(userInfo.nm||"").split(" ")[0]||"";
   const ini=(userInfo.nm||"?").split(" ").map(w=>w[0]||"").join("").slice(0,2).toUpperCase()||"??";
 
+  /* ── Un blocage décidé côté admin doit fermer l'accès rapide aussi, pas
+     seulement le formulaire de connexion — sinon un compte bloqué resterait
+     utilisable via le code PIN déjà mémorisé sur l'appareil. ── */
+  const compteBloque = comptesInscrits.some(c=>c.ph===userInfo.ph && c.bloque);
+
   useEffect(()=>{
     try{if(window.PublicKeyCredential)window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable().then(ok=>setBioDispo(ok)).catch(()=>{});}catch(e){}
   },[]);
+
+  if(compteBloque) return (
+    <div className="scr on" style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"0 28px",textAlign:"center"}}>
+      <span style={{fontSize:40,marginBottom:14}}>🚫</span>
+      <p style={{fontFamily:"Sora,sans-serif",fontSize:18,fontWeight:800,color:C.ink,marginBottom:8}}>Compte bloqué</p>
+      <p style={{fontSize:13,color:C.muted,lineHeight:1.6,marginBottom:20}}>Ce compte a été bloqué. Contactez le support ALERTE CI pour plus d'informations.</p>
+      <button className="btn btn-g" onClick={()=>{seDeconnecter&&seDeconnecter();go("splash");}}>Retour</button>
+    </div>
+  );
 
   const onPin=(v)=>{
     setPin(v); setErr("");
@@ -368,18 +382,37 @@ const AccesRapide = ({go,userInfo={},onAcces}) => {
           </button>
         )}
         <button onClick={()=>go("login")} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,fontWeight:700,color:C.faint,fontFamily:"Plus Jakarta Sans"}}>Se connecter avec un autre compte</button>
+        <button onClick={()=>go("admin")} style={{marginTop:14,background:"none",border:"none",cursor:"pointer",fontSize:10,color:"rgba(0,0,0,.18)",fontFamily:"Plus Jakarta Sans"}}>Administration ALERTE CI</button>
       </div>
     </div>
   );
 };
 
-const Splash = ({go, userInfo={}, onAcces}) => {
+const Splash = ({go, userInfo={}, onAcces, comptesInscrits=[], seDeconnecter}) => {
   if(userInfo.nm&&userInfo.ph){
-    return <AccesRapide go={go} userInfo={userInfo} onAcces={onAcces}/>;
+    return <AccesRapide go={go} userInfo={userInfo} onAcces={onAcces} comptesInscrits={comptesInscrits} seDeconnecter={seDeconnecter}/>;
   }
   return (
     <div className="scr on splash" style={{display:"flex"}}>
-      <div className="orb"><span className="orb-txt">A</span></div>
+      <div className="orb">
+        <svg width="60" height="60" viewBox="0 0 216 216" style={{position:"relative",zIndex:1}}>
+          <defs>
+            <linearGradient id="orbShield" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#FFFFFF"/><stop offset="100%" stopColor="#FFF3E8"/>
+            </linearGradient>
+            <linearGradient id="orbPin" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#FB923C"/><stop offset="100%" stopColor="#C2410C"/>
+            </linearGradient>
+          </defs>
+          <g transform="translate(108,107)">
+            <path d="M0 -56 L45 -39 C45 -2 36 33 0 61 C-36 33 -45 -2 -45 -39 Z" fill="url(#orbShield)"/>
+            <g transform="translate(0,-3)">
+              <path d="M0 -23 C13.5 -23 23.5 -12.5 23.5 1 C23.5 17 7 33 0 40 C-7 33 -23.5 17 -23.5 1 C-23.5 -12.5 -13.5 -23 0 -23 Z" fill="url(#orbPin)"/>
+              <circle cx="0" cy="0" r="9" fill="url(#orbShield)"/>
+            </g>
+          </g>
+        </svg>
+      </div>
       <h1 className="stitle">ALERTE<br/><span>CI</span></h1>
       <p className="stag">Votre sécurité, notre priorité</p>
       <div className="flag">
@@ -392,6 +425,9 @@ const Splash = ({go, userInfo={}, onAcces}) => {
         <button className="btn btn-s" onClick={()=>go("login")}>Se connecter</button>
       </div>
       <p style={{marginTop:24,fontSize:11,color:"rgba(255,255,255,.25)",textAlign:"center"}}>Côte d'Ivoire · iOS & Android</p>
+      <button onClick={()=>go("admin")} style={{marginTop:10,background:"none",border:"none",cursor:"pointer",fontSize:10,color:"rgba(255,255,255,.18)",fontFamily:"Plus Jakarta Sans",textAlign:"center"}}>
+        Administration ALERTE CI
+      </button>
     </div>
   );
 };
@@ -930,6 +966,7 @@ const Login = ({go, goBack, setPlan, setUserInfo, userInfo={}, comptesInscrits=[
        pré-rempli ni affiché. */
     const compte = comptesInscrits.find(c => c.ph===ph && c.pin===pinValue);
     if(compte){
+      if(compte.bloque){ setErr("Ce compte a été bloqué. Contactez le support."); setPin(""); return; }
       setErr(""); setLoading(true);
       setPlan&&setPlan(compte.plan==="premium"?"premium":"gratuit");
       setUserInfo&&setUserInfo(compte);
@@ -1226,7 +1263,7 @@ const UpgradeModal = ({onClose,onPay}) => (
       <p style={{fontFamily:"Sora,sans-serif",fontSize:20,fontWeight:800,color:C.ink,textAlign:"center",marginBottom:8}}>Fonctionnalité Premium</p>
       <p style={{fontSize:13,color:C.muted,textAlign:"center",lineHeight:1.6,marginBottom:20}}>Cette rubrique est réservée aux abonnés Premium.</p>
       <div style={{background:C.surf,borderRadius:14,padding:"12px 14px",marginBottom:18}}>
-        {[{ic:"⭐",lb:"Forfait annuel",px:"3 000 FCFA / an"},{ic:"🔄",lb:"Forfait mensuel",px:"1 000 FCFA / mois"}].map((f,i)=>(
+        {[{ic:"⭐",lb:"Forfait annuel",px:"3 000 FCFA / an"}].map((f,i)=>(
           <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"4px 0"}}>
             <span style={{fontSize:18}}>{f.ic}</span>
             <span style={{fontSize:13,fontWeight:600,color:C.ink,flex:1}}>{f.lb}</span>
@@ -2463,6 +2500,16 @@ const Enlevement = ({go,goBack,userInfo={},partagesGps=[],demarrerPartageGps,arr
   const COULEURS=["#7C3AED","#2563EB","#16A34A","#F97316","#EC4899","#0EA5E9"];
   const [notifContactEnvoyee,setNotifContactEnvoyee]=useState(null);
 
+  /* ── Recherche d'une personne disparue par numéro ────────────────────────
+     Si ce numéro vous a désigné comme contact de confiance et partage déjà
+     sa position (reçue automatiquement dans partagesGps), elle s'affiche
+     immédiatement — aucune action n'est requise de la personne recherchée. */
+  const [rechercheNum,setRechercheNum]=useState("");
+  const [rechercheFaite,setRechercheFaite]=useState(false);
+  const resultatRecherche = rechercheFaite && rechercheNum.length===10
+    ? partagesGps.find(p=>String(p.ph||"").replace(/\D/g,"").slice(-10)===rechercheNum) || null
+    : null;
+
   const [partageActif,setPartageActif]=useState(false);
   const [position,setPosition]=useState(null); // {lat,lng,precision,ts}
   const [erreurGps,setErreurGps]=useState("");
@@ -2496,7 +2543,7 @@ const Enlevement = ({go,goBack,userInfo={},partagesGps=[],demarrerPartageGps,arr
     const sendNotif=()=>{
       try{
         new Notification("🆘 ALERTE CI — Contact disparition",{
-          body:`Bonjour ${nmContact} ! Vous avez été désigné(e) contact de confiance par ${nom} pour le suivi en cas de disparition. Vous recevrez sa position GPS en direct si le partage est activé.`,
+          body:`Bonjour ${nmContact} ! Vous avez été désigné(e) contact de confiance par ${nom} pour le suivi en cas de disparition. Vous recevrez automatiquement sa position GPS en direct, en permanence.`,
           tag:`enlevement-${editContact.ph}`,
           requireInteraction:true,
         });
@@ -2669,6 +2716,19 @@ const Enlevement = ({go,goBack,userInfo={},partagesGps=[],demarrerPartageGps,arr
     try{ noteStreamRef.current&&noteStreamRef.current.getTracks().forEach(t=>t.stop()); }catch(e){}
   },[]);
 
+  /* ── Partage automatique et permanent ────────────────────────────────────
+     Dès qu'un contact de confiance existe, le partage démarre tout seul —
+     l'utilisateur n'a jamais à l'activer, y compris en cas de danger réel où
+     il n'aurait pas le temps ou la présence d'esprit d'appuyer sur un bouton.
+     S'il ne reste plus aucun contact, le partage s'arrête (rien à partager). */
+  useEffect(()=>{
+    if(contacts.length>0 && !partageActif){
+      activerPartage();
+    } else if(contacts.length===0 && partageActif){
+      arreterPartage();
+    }
+  },[contacts.length]);
+
   const dureeEcoulee = position ? Math.max(0,Math.round((Date.now()-position.ts)/1000)) : null;
 
   return (
@@ -2688,11 +2748,11 @@ const Enlevement = ({go,goBack,userInfo={},partagesGps=[],demarrerPartageGps,arr
             </div>
           </div>
           <p className="hl">{partageActif?"📍 Position partagée en direct":"Suivi GPS contre les disparitions"}</p>
-          <p className="ht">{partageActif?"Vos contacts vous suivent en temps réel":"Prêt à activer le partage"}</p>
+          <p className="ht">{partageActif?"Vos contacts vous suivent en temps réel":"Ajoutez un contact de confiance"}</p>
           <p className="hd">
             {partageActif
-              ?`Votre position se met à jour automatiquement et s'affiche en direct chez vos ${contacts.length||3} contacts de confiance, qui voient votre déplacement à chaque actualisation GPS.`
-              :"En cas de disparition ou d'enlèvement présumé, activez le partage : votre position GPS sera envoyée en direct à vos contacts de confiance et se mettra à jour automatiquement."}
+              ?`Votre position se met à jour automatiquement et s'affiche en direct chez vos ${contacts.length} contact${contacts.length>1?"s":""} de confiance, qui voient votre déplacement à chaque actualisation GPS — sans aucune action de votre part, même en cas de danger.`
+              :"Ajoutez vos contacts de confiance ci-dessous : votre position leur sera alors partagée automatiquement et en permanence, sans aucune action de votre part, même en cas de danger."}
           </p>
         </div>
 
@@ -2809,16 +2869,65 @@ const Enlevement = ({go,goBack,userInfo={},partagesGps=[],demarrerPartageGps,arr
         )}
 
         <div style={{padding:"0 20px 12px"}}>
-          {!partageActif?(
-            <button className="btn btn-p" style={{background:"linear-gradient(135deg,#7C3AED,#6D28D9)"}} onClick={activerPartage}>
-              <I n="pin" s={16} c="#fff"/>Activer le partage GPS en direct
-            </button>
+          {partageActif?(
+            <div style={{display:"flex",alignItems:"center",gap:10,background:"#F5F3FF",border:"1.5px solid rgba(124,58,237,.25)",borderRadius:14,padding:"12px 14px"}}>
+              <div style={{width:10,height:10,borderRadius:"50%",background:"#7C3AED",animation:"bk 1.4s ease infinite",flexShrink:0}}/>
+              <p style={{fontSize:12,fontWeight:700,color:"#5B21B6",lineHeight:1.5}}>Partage automatique actif — vos contacts de confiance voient votre position en direct, en permanence.</p>
+            </div>
           ):(
-            <button className="btn btn-g" onClick={arreterPartage}>
-              <I n="check" s={16} c={C.ink}/>Arrêter le partage
-            </button>
+            <div style={{display:"flex",alignItems:"center",gap:10,background:C.surf,border:`1px solid ${C.border}`,borderRadius:14,padding:"12px 14px"}}>
+              <I n="pin" s={16} c={C.faint}/>
+              <p style={{fontSize:12,fontWeight:600,color:C.muted,lineHeight:1.5}}>Ajoutez un contact de confiance ci-dessous pour démarrer le partage automatique de votre position.</p>
+            </div>
           )}
         </div>
+
+        <div style={{margin:"0 20px 12px",background:"#fff",border:`1px solid ${C.border}`,borderRadius:16,padding:"16px"}}>
+          <p style={{fontSize:13,fontWeight:800,color:C.ink,marginBottom:4}}>🔍 Rechercher une personne disparue</p>
+          <p style={{fontSize:11,color:C.muted,lineHeight:1.5,marginBottom:10}}>Entrez le numéro d'une personne qui vous a ajouté comme contact de confiance dans SON application. Sa position s'affiche ici en direct — elle n'a rien à faire au moment du danger, son téléphone envoie sa position automatiquement.</p>
+          <div style={{display:"flex",gap:8}}>
+            <div className="if" style={{flex:1,marginBottom:0}}>
+              <I n="phone" s={16} c={C.faint}/>
+              <input type="tel" value={rechercheNum} maxLength={10}
+                onChange={e=>{setRechercheNum(e.target.value.replace(/\D/g,"").slice(0,10));setRechercheFaite(false);}}
+                placeholder="Numéro (10 chiffres)"/>
+            </div>
+            <button className="btn btn-p" style={{width:"auto",padding:"0 18px",background:"linear-gradient(135deg,#7C3AED,#6D28D9)"}}
+              disabled={rechercheNum.length!==10}
+              onClick={()=>setRechercheFaite(true)}>
+              Rechercher
+            </button>
+          </div>
+          {rechercheFaite&&(
+            resultatRecherche?(
+              <div style={{marginTop:12,background:"#F5F3FF",border:"1px solid rgba(124,58,237,.25)",borderRadius:14,padding:"12px 14px"}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                  <div style={{width:8,height:8,borderRadius:"50%",background:"#7C3AED",animation:"bk 1.4s ease infinite",flexShrink:0}}/>
+                  <p style={{fontSize:13,fontWeight:800,color:C.ink}}>{resultatRecherche.nom}</p>
+                </div>
+                <p style={{fontSize:11,color:C.muted,marginBottom:8}}>Position partagée en direct · précision ≈ {resultatRecherche.precision}m</p>
+                <a href={`https://www.google.com/maps?q=${resultatRecherche.lat},${resultatRecherche.lng}`} target="_blank" rel="noreferrer"
+                  style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,padding:"9px",borderRadius:10,background:"#7C3AED",color:"#fff",fontSize:12,fontWeight:700,textDecoration:"none",fontFamily:"Plus Jakarta Sans"}}>
+                  <I n="pin" s={14} c="#fff"/> Voir sa position sur la carte
+                </a>
+              </div>
+            ):(
+              <div style={{marginTop:12,background:"#FFF7ED",border:"1px solid rgba(249,115,22,.25)",borderRadius:14,padding:"12px 14px"}}>
+                <p style={{fontSize:12,color:"#9A3412",fontWeight:600,lineHeight:1.5}}>Aucune position en direct pour ce numéro pour l'instant. Assurez-vous que cette personne vous a bien ajouté comme contact de confiance dans son application — le suivi apparaîtra ici automatiquement dès qu'elle le fait.</p>
+              </div>
+            )
+          )}
+        </div>
+
+        {contacts.length===0&&(
+          <div style={{margin:"0 20px 12px",background:"#FFF7ED",border:"1px solid rgba(249,115,22,.3)",borderRadius:16,padding:"14px 16px",display:"flex",gap:10}}>
+            <span style={{fontSize:18,flexShrink:0}}>⚠️</span>
+            <div>
+              <p style={{fontSize:13,fontWeight:800,color:C.orange,marginBottom:3}}>Ajoutez un contact de confiance</p>
+              <p style={{fontSize:12,color:C.muted,lineHeight:1.5}}>Dès que vous ajoutez un contact de confiance ci-dessous, votre position sera partagée automatiquement avec lui, sans aucune action de votre part.</p>
+            </div>
+          </div>
+        )}
 
         {notifContactEnvoyee&&(
           <div style={{margin:"0 20px 12px",background:C.greenL,border:"1px solid rgba(22,163,74,.25)", borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",gap:10, animation:"stin 280ms var(--eo)"}}>
@@ -2967,7 +3076,7 @@ const Enlevement = ({go,goBack,userInfo={},partagesGps=[],demarrerPartageGps,arr
         <div style={{padding:"8px 20px 20px"}}>
           <div style={{background:"#F5F3FF",border:"1px solid rgba(124,58,237,.2)",borderRadius:14,padding:"12px 14px"}}>
             <p style={{fontSize:12,fontWeight:700,color:"#7C3AED",marginBottom:4}}>ℹ️ Comment ça marche</p>
-            <p style={{fontSize:12,color:C.muted,lineHeight:1.5}}>Une fois activé, le partage GPS envoie automatiquement votre position à vos contacts à chaque déplacement détecté — aucune action de votre part n'est requise. Chez vos contacts, la position affichée se synchronise et s'actualise dès qu'ils ouvrent ou rafraîchissent l'écran.</p>
+            <p style={{fontSize:12,color:C.muted,lineHeight:1.5}}>Dès qu'un contact de confiance est ajouté, le partage GPS envoie automatiquement et en permanence votre position à ce contact à chaque déplacement détecté — aucune action de votre part n'est requise, même en cas de danger. Chez vos contacts, la position affichée se synchronise et s'actualise dès qu'ils ouvrent ou rafraîchissent l'écran.</p>
           </div>
         </div>
       </div>
@@ -3002,13 +3111,12 @@ const playNotif = () => {
 /* ── PAIEMENT PREMIUM ──────────────────────────────────────────────────────── */
 const Paiement = ({go,goBack,onSuccess}) => {
   const [method,setMethod]=useState(null);
-  const [periode,setPeriode]=useState("annuel");
   const [done,setDone]=useState(false);
   const [numMM,setNumMM]=useState("");
   const [errPay,setErrPay]=useState("");
 
-  const prix = periode==="annuel" ? "3 000 FCFA / an" : "1 000 FCFA / mois";
-  const montant = periode==="annuel" ? "3 000 FCFA" : "1 000 FCFA";
+  const prix = "3 000 FCFA / an";
+  const montant = "3 000 FCFA";
 
   const isMM = ["orange","mtn","moov","wave"].includes(method);
   const valider=()=>{
@@ -3044,20 +3152,14 @@ const Paiement = ({go,goBack,onSuccess}) => {
           <p className="scrttl">Paiement Premium</p>
         </div>
 
-        <div style={{margin:"0 20px 14px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-          {[{id:"annuel",lb:"Annuel",prix:"3 000 FCFA",eco:"Le plus économique"},{id:"mensuel",lb:"Mensuel",prix:"1 000 FCFA",eco:"Sans engagement"}].map(p=>(
-            <button key={p.id} onClick={()=>setPeriode(p.id)}
-              style={{padding:"14px 12px",borderRadius:18,border:`2px solid ${periode===p.id?C.orange:"rgba(0,0,0,.07)"}`,background:periode===p.id?C.orangeL:"#fff",cursor:"pointer",fontFamily:"Plus Jakarta Sans",textAlign:"center",position:"relative"}}>
-              {p.id==="annuel"&&<span style={{position:"absolute",top:-8,left:"50%",transform:"translateX(-50%)",fontSize:9,fontWeight:800,background:C.orange,color:"#fff",padding:"2px 8px",borderRadius:20,whiteSpace:"nowrap"}}>⭐ MEILLEUR CHOIX</span>}
-              <p style={{fontSize:16,fontWeight:800,color:periode===p.id?C.orange:C.ink,letterSpacing:"-.5px"}}>{p.prix}</p>
-              <p style={{fontSize:11,fontWeight:700,color:periode===p.id?C.orange:C.muted,marginTop:2}}>{p.lb}</p>
-              <p style={{fontSize:10,color:C.faint,marginTop:2}}>{p.eco}</p>
-            </button>
-          ))}
+        <div style={{margin:"0 20px 14px",background:C.orangeL,border:"1px solid rgba(249,115,22,.2)",borderRadius:18,padding:"14px 16px",textAlign:"center"}}>
+          <p style={{fontSize:9,fontWeight:800,color:"#fff",background:C.orange,display:"inline-block",padding:"3px 10px",borderRadius:20,marginBottom:8}}>⭐ ABONNEMENT ANNUEL</p>
+          <p style={{fontSize:22,fontWeight:800,color:C.orange,letterSpacing:"-.5px"}}>3 000 FCFA</p>
+          <p style={{fontSize:11,fontWeight:600,color:C.muted,marginTop:2}}>par an · sans engagement caché</p>
         </div>
 
         <div style={{margin:"0 20px 20px",background:"linear-gradient(135deg,#1C1917,#292524)",borderRadius:22,padding:"20px"}}>
-          <p style={{fontSize:11,fontWeight:700,color:C.orange,letterSpacing:"1px",textTransform:"uppercase",marginBottom:6}}>✦ FORFAIT PREMIUM — {periode==="annuel"?"ANNUEL":"MENSUEL"}</p>
+          <p style={{fontSize:11,fontWeight:700,color:C.orange,letterSpacing:"1px",textTransform:"uppercase",marginBottom:6}}>✦ FORFAIT PREMIUM — ANNUEL</p>
           <p style={{fontFamily:"Sora,sans-serif",fontSize:26,fontWeight:800,color:"#fff",letterSpacing:"-1px"}}>{prix}</p>
           <p style={{fontSize:12,color:"rgba(255,255,255,.5)",marginTop:4}}>Accès complet · Alerte Violence · Alerte Enlèvement</p>
           <div style={{marginTop:12,display:"flex",gap:8,flexWrap:"wrap"}}>
@@ -3277,7 +3379,7 @@ const Cgu = ({go,goBack}) => (
       {[
         {t:"1. Objet de l'application",p:"ALERTE CI est une application mobile destinée aux résidents de Côte d'Ivoire, offrant des services de sécurité personnelle en cas de violence ou de disparition. L'application est disponible sur iOS et Android."},
         {t:"2. Compte unique par appareil",p:"Chaque compte ALERTE CI est strictement lié à un seul appareil à la fois. Toute tentative de connexion simultanée sur deux appareils entraînera la déconnexion automatique du premier appareil."},
-        {t:"3. Forfaits et abonnements",p:"L'application propose un mois d'essai gratuit à la création du compte, donnant accès à Alerte Violence et Alerte Enlèvement. Passé ce délai, un abonnement est nécessaire pour continuer à y accéder (3 000 FCFA/an ou 1 000 FCFA/mois). Le paiement s'effectue via Mobile Money, Wave CI ou carte bancaire."},
+        {t:"3. Forfaits et abonnements",p:"L'application propose un mois d'essai gratuit à la création du compte, donnant accès à Alerte Violence et Alerte Enlèvement. Passé ce délai, un abonnement annuel est nécessaire pour continuer à y accéder (3 000 FCFA/an). Le paiement s'effectue via Mobile Money, Wave CI ou carte bancaire."},
         {t:"4. Utilisation responsable",p:"L'utilisateur s'engage à utiliser l'application de manière responsable. Tout abus, fausse alerte ou utilisation malveillante pourra entraîner la suspension du compte."},
         {t:"5. Données personnelles et protection de la vie privée",p:"ALERTE CI collecte uniquement les données nécessaires au fonctionnement du service : nom, numéro de téléphone (10 chiffres CI), commune, email (facultatif) et localisation GPS — cette dernière n'étant activée que lors d'un signalement d'urgence ou d'un partage de position volontaire (Alerte Enlèvement). Ces données sont conservées de façon sécurisée et ne sont jamais vendues à des tiers ni utilisées à des fins publicitaires. Elles sont partagées uniquement avec les contacts de confiance explicitement désignés par l'utilisateur. Conformément à la réglementation ivoirienne sur la protection des données à caractère personnel, l'utilisateur dispose à tout moment d'un droit d'accès, de rectification et de suppression de ses données, exerçable depuis Mon Profil ou auprès du support ALERTE CI. Les notes vocales et signalements expirent et sont supprimés automatiquement après 24 heures, sauf nécessité légale de conservation plus longue."},
         {t:"6. Modification des CGU",p:"ALERTE CI se réserve le droit de modifier les présentes conditions à tout moment. Les utilisateurs seront notifiés par notification push en cas de modification substantielle."},
@@ -3299,7 +3401,7 @@ const Faq = ({go,goBack}) => {
     {q:"Mes contacts doivent-ils avoir l'application ?",a:"Pour l'Alerte Violence et l'Alerte Enlèvement, vos contacts reçoivent une simple notification — ils n'ont pas besoin d'installer l'application."},
     {q:"Peut-on avoir 2 appareils connectés en même temps ?",a:"Non. ALERTE CI est limité à 1 appareil par compte. Si vous vous connectez sur un nouvel appareil, l'ancien sera automatiquement déconnecté."},
     {q:"L'essai gratuit, comment ça marche ?",a:"Dès la création de votre compte, vous bénéficiez d'un mois d'accès Premium gratuit à Alerte Violence et Alerte Enlèvement. Passé ce délai, un abonnement est nécessaire pour continuer à y accéder."},
-    {q:"Comment payer l'abonnement annuel ?",a:"Le paiement s'effectue directement dans l'application via Mobile Money (Orange, MTN), Wave CI, Moov Money ou carte bancaire Visa/Mastercard. Forfait annuel : 3 000 FCFA/an (ou 1 000 FCFA/mois)."},
+    {q:"Comment payer l'abonnement annuel ?",a:"Le paiement s'effectue directement dans l'application via Mobile Money (Orange, MTN), Wave CI, Moov Money ou carte bancaire Visa/Mastercard. Forfait annuel : 3 000 FCFA/an."},
     {q:"Les numéros CI sont à combien de chiffres ?",a:"Les numéros ivoiriens sont à 10 chiffres (ex: 0700000000). L'application accepte uniquement les formats valides à 10 chiffres."},
     {q:"La localisation GPS est-elle toujours active ?",a:"Non. La localisation GPS n'est activée que lors d'une Alerte Violence ou d'un partage de position (Alerte Enlèvement)."},
     {q:"L'application fonctionne-t-elle sans connexion ?",a:"Certaines fonctionnalités nécessitent internet. L'alerte violence peut fonctionner en mode dégradé via SMS si configuré."},
@@ -3389,16 +3491,6 @@ const Profil = ({go,goBack,userInfo={},setUserInfo,plan="gratuit",setPlan,seDeco
                   <p style={{fontSize:12,color:C.muted,marginTop:2}}>Alerte Violence · Alerte Enlèvement · 3 000 FCFA/an</p>
                 </div>
                 {planActif==="premium"&&<span style={{fontSize:10,fontWeight:800,color:C.orange,background:C.orangeL,padding:"3px 8px",borderRadius:20}}>Actif</span>}
-                <I n="arrow" s={14} c={C.faint}/>
-              </button>
-
-              <button onClick={()=>{setShowGestionAbonnement(false);go("paiement");}}
-                style={{display:"flex",alignItems:"center",gap:12,padding:"16px", borderRadius:16,border:"2px solid rgba(0,0,0,.07)", background:"#fff",cursor:"pointer", fontFamily:"Plus Jakarta Sans"}}>
-                <span style={{fontSize:24}}>🔄</span>
-                <div style={{flex:1,textAlign:"left"}}>
-                  <p style={{fontSize:14,fontWeight:800,color:C.ink}}>Premium Mensuel</p>
-                  <p style={{fontSize:12,color:C.muted,marginTop:2}}>Sans engagement · 1 000 FCFA/mois</p>
-                </div>
                 <I n="arrow" s={14} c={C.faint}/>
               </button>
 
@@ -3599,6 +3691,93 @@ const Parametres = ({go,goBack}) => {
         </div>
       </div>
       <Nav a="profil" go={go}/>
+    </div>
+  );
+};
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   TABLEAU DE BORD ADMINISTRATEUR — gestion des utilisateurs
+   Liste tous les comptes citoyens inscrits sur cet appareil et permet de
+   bloquer/débloquer l'accès à l'application (un compte bloqué ne peut plus
+   se reconnecter, cf. vérification dans Login). ── */
+const AdminDashboard = ({go,goBack,comptesInscrits=[],basculerBlocageCompte}) => {
+  const [recherche,setRecherche]=useState("");
+  const comptes = comptesInscrits.filter(c=>{
+    if(!recherche.trim()) return true;
+    const q=recherche.trim().toLowerCase();
+    return (c.nm||"").toLowerCase().includes(q) || (c.ph||"").includes(q);
+  });
+  const actifs = comptes.filter(c=>!c.bloque);
+  const bloques = comptes.filter(c=>c.bloque);
+
+  return (
+    <div className="scr on" style={{display:"flex"}}>
+      <div className="scrl">
+        <div className="scrhdr">
+          <button className="bk" onClick={goBack}><I n="back" s={18} c={C.ink}/></button>
+          <p className="scrttl">Administration</p>
+        </div>
+
+        <div style={{padding:"0 20px 14px"}}>
+          <p style={{fontSize:12,color:C.muted,lineHeight:1.5}}>{comptesInscrits.length} compte{comptesInscrits.length>1?"s":""} utilisateur{comptesInscrits.length>1?"s":""} inscrit{comptesInscrits.length>1?"s":""} sur cet appareil.</p>
+        </div>
+
+        <div style={{padding:"0 20px 14px"}}>
+          <div className="if" style={{marginBottom:0}}>
+            <I n="user" s={16} c={C.faint}/>
+            <input value={recherche} onChange={e=>setRecherche(e.target.value)} placeholder="Rechercher un nom ou un numéro..."/>
+          </div>
+        </div>
+
+        <div style={{padding:"0 20px",display:"flex",flexDirection:"column",gap:10}}>
+          {comptes.length===0&&(
+            <div style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:18,padding:"28px 20px",textAlign:"center"}}>
+              <p style={{fontSize:28,marginBottom:8}}>👥</p>
+              <p style={{fontSize:13,fontWeight:700,color:C.ink,marginBottom:4}}>Aucun compte trouvé</p>
+              <p style={{fontSize:12,color:C.muted,lineHeight:1.5}}>Les nouvelles inscriptions apparaîtront ici automatiquement.</p>
+            </div>
+          )}
+
+          {actifs.length>0&&comptes.length>0&&(
+            <p style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".5px",marginTop:4}}>Comptes actifs ({actifs.length})</p>
+          )}
+          {actifs.map(c=>(
+            <div key={c.id} style={{display:"flex",alignItems:"center",gap:10,background:"#fff",border:`1px solid ${C.border}`,borderRadius:14,padding:"12px 14px"}}>
+              <div style={{width:36,height:36,borderRadius:11,background:C.orangeL,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                <I n="user" s={17} c={C.orange}/>
+              </div>
+              <div style={{flex:1,minWidth:0}}>
+                <p style={{fontSize:13,fontWeight:700,color:C.ink}}>{c.nm||"—"}</p>
+                <p style={{fontSize:11,color:C.muted}}>{c.ph} · {c.commune||"commune non renseignée"} · {c.plan==="premium"?"Premium":"Gratuit"}</p>
+              </div>
+              <button onClick={()=>basculerBlocageCompte&&basculerBlocageCompte(c.id)}
+                style={{fontSize:11,fontWeight:700,color:"#DC2626",background:"#FFF1F2",border:"none",borderRadius:9,padding:"7px 12px",cursor:"pointer",fontFamily:"Plus Jakarta Sans",flexShrink:0}}>
+                Bloquer
+              </button>
+            </div>
+          ))}
+
+          {bloques.length>0&&(
+            <p style={{fontSize:11,fontWeight:700,color:"#DC2626",textTransform:"uppercase",letterSpacing:".5px",marginTop:8}}>Comptes bloqués ({bloques.length})</p>
+          )}
+          {bloques.map(c=>(
+            <div key={c.id} style={{display:"flex",alignItems:"center",gap:10,background:"#FFF1F2",border:"1px solid rgba(220,38,38,.25)",borderRadius:14,padding:"12px 14px"}}>
+              <div style={{width:36,height:36,borderRadius:11,background:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                <I n="user" s={17} c="#DC2626"/>
+              </div>
+              <div style={{flex:1,minWidth:0}}>
+                <p style={{fontSize:13,fontWeight:700,color:C.ink}}>{c.nm||"—"}</p>
+                <p style={{fontSize:11,color:"#9A3412"}}>{c.ph} · bloqué</p>
+              </div>
+              <button onClick={()=>basculerBlocageCompte&&basculerBlocageCompte(c.id)}
+                style={{fontSize:11,fontWeight:700,color:C.green,background:C.greenL,border:"none",borderRadius:9,padding:"7px 12px",cursor:"pointer",fontFamily:"Plus Jakarta Sans",flexShrink:0}}>
+                Débloquer
+              </button>
+            </div>
+          ))}
+        </div>
+        <div style={{height:24}}/>
+      </div>
     </div>
   );
 };
@@ -3834,9 +4013,18 @@ export default function AlerteCI() {
 
   const onAcces=()=>go("home");
 
+  /* ── Blocage / déblocage d'un compte depuis le tableau de bord admin ────
+     Bloque immédiatement l'accès : à la prochaine tentative de connexion
+     ET à l'accès rapide (PIN) si la session est encore ouverte sur cet
+     appareil. ── */
+  const basculerBlocageCompte=(id)=>{
+    setComptesInscrits(prev=>prev.map(c=>c.id===id?{...c,bloque:!c.bloque}:c));
+  };
+
   const screens={
-    splash:<Splash go={go} userInfo={userInfo} onAcces={onAcces}/>,
+    splash:<Splash go={go} userInfo={userInfo} onAcces={onAcces} comptesInscrits={comptesInscrits} seDeconnecter={seDeconnecter}/>,
     login:<Login go={go} goBack={goBack} setPlan={setPlan} setUserInfo={setUserInfo} userInfo={userInfo} comptesInscrits={comptesInscrits}/>,
+    admin:<AdminDashboard go={go} goBack={goBack} comptesInscrits={comptesInscrits} basculerBlocageCompte={basculerBlocageCompte}/>,
     home:<Home go={go} plan={planEffectif} userInfo={userInfo} essai={essaiInfo}/>,
     violence:<Violence go={go} goBack={goBack} userInfo={userInfo}/>,
     enlevement:<Enlevement go={go} goBack={goBack} userInfo={userInfo} partagesGps={partagesGps} demarrerPartageGps={demarrerPartageGps} arreterPartageGps={arreterPartageGps} majPositionGps={majPositionGps}/>,

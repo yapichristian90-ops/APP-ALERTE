@@ -16,20 +16,25 @@
       </linearGradient>
       <linearGradient id="shieldGrad" x1="0" y1="0" x2="0" y2="1">
         <stop offset="0%" stop-color="#FFFFFF"/>
-        <stop offset="100%" stop-color="#FFF7ED"/>
+        <stop offset="100%" stop-color="#FFF3E8"/>
       </linearGradient>
-      <radialGradient id="glow" cx="50%" cy="30%" r="70%">
-        <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.22"/>
+      <linearGradient id="pinGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#FB923C"/>
+        <stop offset="100%" stop-color="#C2410C"/>
+      </linearGradient>
+      <radialGradient id="glow" cx="50%" cy="26%" r="72%">
+        <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.24"/>
         <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
       </radialGradient>
     </defs>
     <rect x="0" y="0" width="432" height="432" rx="96" fill="url(#bg)"/>
     <rect x="0" y="0" width="432" height="432" rx="96" fill="url(#glow)"/>
-    <g transform="translate(216,222)">
-      <path d="M0 -108 L86 -76 C86 -6 70 62 0 116 C-70 62 -86 -6 -86 -76 Z"
-            fill="url(#shieldGrad)" stroke="#7C2D12" stroke-width="6" stroke-opacity="0.15"/>
-      <rect x="-11" y="-56" width="22" height="86" rx="11" fill="#EA580C"/>
-      <circle cx="0" cy="52" r="13" fill="#EA580C"/>
+    <g transform="translate(216,214)">
+      <path d="M0 -112 L90 -78 C90 -4 72 66 0 122 C-72 66 -90 -4 -90 -78 Z" fill="url(#shieldGrad)"/>
+      <g transform="translate(0,-6)">
+        <path d="M0 -46 C27 -46 47 -25 47 2 C47 34 14 66 0 80 C-14 66 -47 34 -47 2 C-47 -25 -27 -46 0 -46 Z" fill="url(#pinGrad)"/>
+        <circle cx="0" cy="0" r="18" fill="url(#shieldGrad)"/>
+      </g>
     </g>
   </svg>
   <div>
