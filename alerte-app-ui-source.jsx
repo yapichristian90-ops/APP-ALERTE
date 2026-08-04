@@ -9,62 +9,6 @@ const C = {
 
 const VILLES_CI = ["Yopougon","Cocody","Abobo","Adjamé","Plateau","Marcory","Treichville","Port-Bouët","Koumassi","Attécoubé","Songon","Anyama","Bouaké","Daloa","San-Pédro","Yamoussoukro","Korhogo","Man","Abengourou","Divo","Gagnoa","Odienné","Bondoukou","Séguéla","Duekoué","Touba","Ferkessédougou","Bouna","Agboville","Sassandra","Grand-Bassam","Aboisso","Soubré","Guiglo","Issia","Sinfra","Dimbokro","Bangolo","Vavoua","Bongouanou","Tiébissou","Zuénoula","Boundiali","Danané","Lakota","Grand-Lahou","Jacqueville","Adzopé","Agnibilékrou","Akoupé","Bocanda","Daoukro","Guitry","Katiola","Mankono","Méagui","Oumé","Tabou","Tingrela"];
 
-/* ── Types de service institutionnel proposés à l'inscription ──────────────
-   Liste par défaut, modifiable depuis le tableau de bord admin (ajout ou
-   retrait d'un type) via l'état typesServiceDisponibles au niveau racine. ── */
-const TYPES_SERVICE_DEFAUT = ["Ministère","Mairie / Commune","Police","Gendarmerie","AGEROUTE","ANAGED","Hôpital et service de santé public","La Ligue","SODEXAM","Autres services et organisations"];
-
-/* ── Config des écrans "service public" côté citoyen (Alerte Info) ─────────
-   Chaque service (sauf SODEXAM, qui garde son écran météo dédié existant)
-   obtient un écran générique permettant de RECEVOIR les diffusions de ce
-   service précis et de lui ENVOYER un signalement — sur le même modèle que
-   l'écran Effondrement (Ministère de la Construction). ── */
-const SERVICES_PUBLICS_CONFIG = [
-  {sc:"sp_ministere",  nom:"Ministère",                              ic:"building", c:"#C2410C", bg:"rgba(249,115,22,.15)", grad:"linear-gradient(145deg,#7C2D12,#C2410C)", desc:"Signalez une situation à transmettre directement au ministère concerné."},
-  {sc:"sp_mairie",      nom:"Mairie / Commune",                       ic:"building", c:"#2563EB", bg:"rgba(59,130,246,.15)", grad:"linear-gradient(145deg,#1E3A8A,#2563EB)", desc:"Signalez un problème municipal (voirie, éclairage, déchets...) à votre mairie."},
-  {sc:"sp_police",      nom:"Police",                                 ic:"shield2",  c:"#1D4ED8", bg:"rgba(29,78,216,.15)",  grad:"linear-gradient(145deg,#1E3A8A,#1D4ED8)", desc:"Signalez un fait nécessitant l'intervention de la police."},
-  {sc:"sp_gendarmerie",nom:"Gendarmerie",                            ic:"shield2",  c:"#15803D", bg:"rgba(21,128,61,.15)",  grad:"linear-gradient(145deg,#14532D,#15803D)", desc:"Signalez un fait relevant de la gendarmerie nationale."},
-  {sc:"sp_routier",     nom:"AGEROUTE",                                ic:"building", c:"#B45309", bg:"rgba(180,83,9,.15)",   grad:"linear-gradient(145deg,#78350F,#B45309)", desc:"Signalez un danger ou une dégradation sur le réseau routier."},
-  {sc:"sp_anaged",      nom:"ANAGED",                                  ic:"building", c:"#15803D", bg:"rgba(21,128,61,.15)",  grad:"linear-gradient(145deg,#14532D,#15803D)", desc:"Signalez un problème de gestion des déchets (collecte, dépôt sauvage, insalubrité)."},
-  {sc:"sp_sante",       nom:"Hôpital et service de santé public",     ic:"alert",    c:"#BE123C", bg:"rgba(190,18,60,.15)",  grad:"linear-gradient(145deg,#881337,#BE123C)", desc:"Signalez une urgence sanitaire ou un besoin d'assistance médicale."},
-  {sc:"sp_ligue",       nom:"La Ligue",                               ic:"shield2",  c:"#7C3AED", bg:"rgba(124,58,237,.15)", grad:"linear-gradient(145deg,#4C1D95,#7C3AED)", desc:"Signalez une situation à transmettre à La Ligue."},
-  {sc:"sp_autres",      nom:"Autres services et organisations",      ic:"star",     c:"#0E7490", bg:"rgba(14,116,144,.15)", grad:"linear-gradient(145deg,#164E63,#0E7490)", desc:"Signalez une situation à transmettre à un autre service ou organisation."},
-];
-
-/* ── Fonctionnalités masquées pour cette version ────────────────────────────
-   Mon Planning, Alerte Info et les écrans Service Public restent codés et
-   fonctionnels mais sont retirés de la navigation visible. Il suffira de
-   repasser l'indicateur concerné à true pour les republier dans une future
-   version, sans réécrire ce code. ── */
-const FEATURES = { planning:false, alerteInfo:false, servicesPublics:false, institutionSignup:false };
-
-/* ── Sanitisation des saisies utilisateur ────────────────────────────────
-   Retire balises HTML/scripts et caractères de contrôle, borne la longueur.
-   Appliquée avant tout stockage local ou envoi au serveur (défense en
-   profondeur : le serveur revalide aussi de son côté). ── */
-const saneTxt = (s, max=300) => String(s??"")
-  .replace(/<[^>]*>/g,"")
-  .replace(/[\x00-\x1f\x7f]/g,"")
-  .replace(/\s+/g," ")
-  .trim()
-  .slice(0, max);
-const saneTel = (s) => String(s??"").replace(/\D/g,"").slice(0,10);
-const saneCode = (s) => String(s??"").replace(/\D/g,"").slice(0,6);
-
-/* ── Abonnement « Akwaba » ────────────────────────────────────────────────
-   30 jours offerts à la création du compte, puis forfait annuel payant pour
-   garder l'accès à Alerte Violence et Alerte Enlèvement. Le contenu et le
-   fonctionnement des deux alertes eux-mêmes ne changent pas : seul l'accès
-   est conditionné à l'abonnement. ── */
-const PRIX_PREMIUM_FCFA = 3000;
-const essaiEnCours = (u) => !!(u && u.essaiFin && Date.now() < new Date(u.essaiFin).getTime());
-const abonnementActif = (u) => !!(u && u.premiumExpire && Date.now() < new Date(u.premiumExpire).getTime());
-const accesPremiumActif = (u) => essaiEnCours(u) || abonnementActif(u);
-const joursRestantsEssai = (u) => {
-  if(!u || !u.essaiFin) return 0;
-  return Math.max(0, Math.ceil((new Date(u.essaiFin).getTime()-Date.now())/(24*60*60*1000)));
-};
-
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Sora:wght@700;800&display=swap');
 @font-face{font-family:'Plus Jakarta Sans';font-style:normal;font-weight:700 800;font-display:swap;src:local('Plus Jakarta Sans')}
@@ -261,31 +205,6 @@ to{transform:scaleY(1.4)}
 }
 
 `;
-/* ── Logo ALERTE ─────────────────────────────────────────────────────────
-   Bouclier + point d'exclamation, en dégradé orange (identité de marque déjà
-   utilisée dans toute l'app). Vectoriel : net à toute taille, aucune image
-   à charger. Utilisé sur l'écran d'accueil (Splash), Connexion et Inscription. ── */
-const LogoMark = ({ s=64, bg=true }) => (
-  <svg width={s} height={s} viewBox="0 0 432 432" xmlns="http://www.w3.org/2000/svg">
-    <defs>
-      <linearGradient id="alerteLogoBg" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0%" stopColor="#FB923C"/>
-        <stop offset="55%" stopColor="#F97316"/>
-        <stop offset="100%" stopColor="#C2410C"/>
-      </linearGradient>
-      <linearGradient id="alerteLogoShield" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stopColor="#FFFFFF"/>
-        <stop offset="100%" stopColor="#FFF7ED"/>
-      </linearGradient>
-    </defs>
-    {bg&&<rect x="0" y="0" width="432" height="432" rx="96" fill="url(#alerteLogoBg)"/>}
-    <g transform="translate(216,222)">
-      <path d="M0 -108 L86 -76 C86 -6 70 62 0 116 C-70 62 -86 -6 -86 -76 Z" fill="url(#alerteLogoShield)"/>
-      <rect x="-11" y="-56" width="22" height="86" rx="11" fill="#EA580C"/>
-      <circle cx="0" cy="52" r="13" fill="#EA580C"/>
-    </g>
-  </svg>
-);
 const I = ({ n, s=20, c="currentColor", w=2 }) => {
   const d = {
     shield:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth={w} strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,
@@ -365,8 +284,6 @@ const Nav = ({ a, go }) => {
   const items = [
     {id:"home",ic:"home",lb:"Accueil"},
     {id:"violence",ic:"shield",lb:"Violence"},
-    ...(FEATURES.planning?[{id:"planning",ic:"calendar",lb:"Planning"}]:[]),
-    ...(FEATURES.alerteInfo?[{id:"info",ic:"bell",lb:"Alertes"}]:[]),
     {id:"profil",ic:"user",lb:"Profil"},
   ];
   return (
@@ -451,7 +368,6 @@ const AccesRapide = ({go,userInfo={},onAcces}) => {
           </button>
         )}
         <button onClick={()=>go("login")} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,fontWeight:700,color:C.faint,fontFamily:"Plus Jakarta Sans"}}>Se connecter avec un autre compte</button>
-        <button onClick={()=>go("admin")} style={{marginTop:14,background:"none",border:"none",cursor:"pointer",fontSize:10,color:"rgba(0,0,0,.18)",fontFamily:"Plus Jakarta Sans"}}>Administration ALERTE CI</button>
       </div>
     </div>
   );
@@ -463,10 +379,7 @@ const Splash = ({go, userInfo={}, onAcces}) => {
   }
   return (
     <div className="scr on splash" style={{display:"flex"}}>
-      <div style={{position:"relative",width:120,height:120,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:"2rem"}}>
-        <div className="orb" style={{marginBottom:0}}/>
-        <div style={{position:"absolute",display:"flex"}}><LogoMark s={68} bg={false}/></div>
-      </div>
+      <div className="orb"><span className="orb-txt">A</span></div>
       <h1 className="stitle">ALERTE<br/><span>CI</span></h1>
       <p className="stag">Votre sécurité, notre priorité</p>
       <div className="flag">
@@ -479,9 +392,6 @@ const Splash = ({go, userInfo={}, onAcces}) => {
         <button className="btn btn-s" onClick={()=>go("login")}>Se connecter</button>
       </div>
       <p style={{marginTop:24,fontSize:11,color:"rgba(255,255,255,.25)",textAlign:"center"}}>Côte d'Ivoire · iOS & Android</p>
-      <button onClick={()=>go("admin")} style={{marginTop:10,background:"none",border:"none",cursor:"pointer",fontSize:10,color:"rgba(255,255,255,.18)",fontFamily:"Plus Jakarta Sans",textAlign:"center"}}>
-        Administration ALERTE CI
-      </button>
     </div>
   );
 };
@@ -503,244 +413,147 @@ const DEMO_ACCOUNTS = [];
 const SB_URL = "https://dgwxyhtmuighwknchrae.supabase.co";
 const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRnd3h5aHRtdWlnaHdrbmNocmFlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyNDY5MDAsImV4cCI6MjA5NzgyMjkwMH0.JJyoRXBqQYedgRbU_HdJEMyTo4xYtWH0HBSVdollAJ8";
 const DIFFUSION_TTL_MS = 24*60*60*1000;
-const ESSAI_DUREE_MS = 30*24*60*60*1000;
 
-/* ══════════════════════════════════════════════════════════════════════════
-   AUTHENTIFICATION — Firebase Identity Toolkit (REST, sans SDK à charger).
-   Le numéro de téléphone (10 chiffres) reste l'unique identifiant visible
-   par l'utilisateur ; il devient un email technique interne pour Firebase,
-   ce qui garantit nativement « un numéro = un seul compte » (Firebase
-   refuse la création d'un 2e compte avec le même email technique).
-   Les DONNÉES (profils, diffusions, institutions...) restent sur Supabase,
-   interrogé avec la clé publique (anon) : c'est volontaire — cette clé est
-   conçue pour être publique, comme documenté dans supabase-sql/admins.sql.
-   Les opérations sensibles (administration) passent par l'Edge Function
-   admin-api, qui seule détient la clé de service. ══════════════════════ */
-const FB_API_KEY = "AIzaSyDmjB1He-ktZCXEv-GoW5932qYOXbBEpDA";
-const FB_IDENTITY_URL = "https://identitytoolkit.googleapis.com/v1";
-const FB_TOKEN_URL = "https://securetoken.googleapis.com/v1/token";
-const ADMIN_API_URL = `${SB_URL}/functions/v1/admin-api`;
-
-/* Identifiants techniques : le numéro de téléphone devient un email
-   technique unique, et le code d'accès à 6 chiffres est renforcé par
-   dérivation avant d'être utilisé comme mot de passe Firebase. L'utilisateur,
+/* Identifiants techniques : le numéro de téléphone (10 chiffres) devient un
+   email technique unique, et le code d'accès à 6 chiffres est renforcé par
+   dérivation avant d'être utilisé comme mot de passe serveur. L'utilisateur,
    lui, ne voit jamais rien d'autre que « téléphone + code d'accès ». */
-const cloudEmail = (ph) => `u${saneTel(ph)}@alerteci.app`;
-const cloudPass  = (ph,pin) => `CI!${saneCode(pin)}.${saneTel(ph)}`;
+const cloudEmail = (ph) => `u${String(ph).replace(/\D/g,"")}@alerteci.app`;
+const cloudPass  = (ph,pin) => `CI!${pin}.${String(ph).replace(/\D/g,"")}`;
 
-/* Identifiant d'appareil, généré une fois et conservé localement : sert à
-   détecter qu'un même compte vient d'être ouvert sur un autre téléphone. */
-const getDeviceId = () => {
-  try{
-    let id = window.localStorage.getItem("alerteci_device_id");
-    if(!id){
-      id = "dev-"+Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,10);
-      window.localStorage.setItem("alerteci_device_id", id);
-    }
-    return id;
-  }catch(e){ return "dev-inconnu"; }
-};
-
-async function fbRequest(path, body){
-  try{
-    const r = await fetch(`${FB_IDENTITY_URL}/${path}?key=${FB_API_KEY}`,{
-      method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body),
-    });
-    const d = await r.json();
-    if(!r.ok) return { error:(d.error&&d.error.message)||"ERREUR" };
-    return d;
-  }catch(e){ return { error:"RESEAU" }; }
-}
-const fbSignUp = (email,password) => fbRequest("accounts:signUp", {email,password,returnSecureToken:true});
-const fbSignIn = (email,password) => fbRequest("accounts:signInWithPassword", {email,password,returnSecureToken:true});
-async function fbRefresh(refreshToken){
-  try{
-    const r = await fetch(`${FB_TOKEN_URL}?key=${FB_API_KEY}`,{
-      method:"POST", headers:{"Content-Type":"application/x-www-form-urlencoded"},
-      body:`grant_type=refresh_token&refresh_token=${encodeURIComponent(refreshToken)}`,
-    });
-    const d = await r.json();
-    if(!r.ok) return null;
-    return d;
-  }catch(e){ return null; }
-}
-
-/* Session Firebase locale : id_token (1h), refresh_token (longue durée). */
-const cloudFbSession = () => {
-  try{
-    const brut = window.localStorage.getItem("alerteci_fb_session");
-    return brut ? JSON.parse(brut) : null;
-  }catch(e){ return null; }
-};
-const cloudSetFbSession = (s) => {
-  try{
-    if(s) window.localStorage.setItem("alerteci_fb_session", JSON.stringify(s));
-    else  window.localStorage.removeItem("alerteci_fb_session");
-  }catch(e){}
-};
-/* Reconnexion silencieuse via le refresh token Firebase — l'utilisateur ne
-   voit rien, ne retape rien. */
-async function cloudReconnexionSilencieuse(){
-  const s = cloudFbSession();
-  if(!s || !s.refreshToken) return null;
-  const d = await fbRefresh(s.refreshToken);
-  if(!d || !d.id_token) return null;
-  cloudSetFbSession({ idToken:d.id_token, refreshToken:d.refresh_token, uid:d.user_id });
-  return d.id_token;
-}
-
-/* Les appels de DONNÉES (profils, diffusions...) utilisent systématiquement
-   la clé publique Supabase : la présence ou non d'un jeton Firebase ne change
-   rien ici, Supabase ne connaît pas les jetons Firebase. */
-const cloudHdr = () => ({
+const cloudHdr = (token) => ({
   "Content-Type": "application/json",
   "apikey": SB_KEY,
-  "Authorization": `Bearer ${SB_KEY}`,
+  "Authorization": `Bearer ${token || SB_KEY}`,
 });
 
-async function cloudGet(chemin){
+let _cloudToken = null;
+const cloudToken = () => {
+  if(_cloudToken) return _cloudToken;
+  try{ _cloudToken = window.localStorage.getItem("alerteci_cloud_token") || null; }catch(e){}
+  return _cloudToken;
+};
+const cloudSetToken = (t) => {
+  _cloudToken = t || null;
   try{
-    const r = await fetch(`${SB_URL}/rest/v1/${chemin}`,{headers:cloudHdr()});
+    if(t) window.localStorage.setItem("alerteci_cloud_token", t);
+    else  window.localStorage.removeItem("alerteci_cloud_token");
+  }catch(e){}
+};
+
+/* Reconnexion silencieuse avec la session locale (ph+pin déjà connus de
+   l'appareil) quand le jeton serveur a expiré — l'utilisateur ne voit rien. */
+async function cloudReconnexionSilencieuse(){
+  try{
+    const brut = window.localStorage.getItem("alerteci_session_user");
+    const s = brut ? JSON.parse(brut) : null;
+    if(!s || !s.ph || !s.pin) return null;
+    const r = await fetch(`${SB_URL}/auth/v1/token?grant_type=password`,{
+      method:"POST", headers:cloudHdr(),
+      body:JSON.stringify({email:cloudEmail(s.ph), password:cloudPass(s.ph,s.pin)}),
+    });
+    if(!r.ok) return null;
+    const d = await r.json();
+    if(d.access_token){ cloudSetToken(d.access_token); return d.access_token; }
+    return null;
+  }catch(e){ return null; }
+}
+
+async function cloudGet(chemin, token){
+  try{
+    const r = await fetch(`${SB_URL}/rest/v1/${chemin}`,{headers:cloudHdr(token||cloudToken())});
     if(!r.ok) return null;
     return await r.json();
   }catch(e){ return null; }
 }
 
-async function cloudInsert(table, ligne){
+async function cloudInsert(table, ligne, token, dejaRetente){
   try{
     const r = await fetch(`${SB_URL}/rest/v1/${table}`,{
       method:"POST",
-      headers:{...cloudHdr(), "Prefer":"return=representation"},
+      headers:{...cloudHdr(token||cloudToken()), "Prefer":"return=representation"},
       body:JSON.stringify(ligne),
     });
+    if(r.status===401 && !dejaRetente){
+      const nt = await cloudReconnexionSilencieuse();
+      if(nt) return cloudInsert(table, ligne, nt, true);
+    }
     if(!r.ok) return null;
     const d = await r.json();
     return Array.isArray(d) ? d[0] : d;
   }catch(e){ return null; }
 }
 
-/* Upsert par colonne unique (ex : telephone) — crée la fiche si absente,
-   la met à jour sinon. Utilisé pour ne jamais dupliquer un profil. */
-async function cloudUpsert(table, ligne, colConflit){
-  try{
-    const r = await fetch(`${SB_URL}/rest/v1/${table}?on_conflict=${colConflit}`,{
-      method:"POST",
-      headers:{...cloudHdr(), "Prefer":"resolution=merge-duplicates,return=representation"},
-      body:JSON.stringify(ligne),
-    });
-    if(!r.ok) return null;
-    const d = await r.json();
-    return Array.isArray(d) ? d[0] : d;
-  }catch(e){ return null; }
-}
-
-async function cloudUpdate(table, filtre, patch){
+async function cloudUpdate(table, filtre, patch, token, dejaRetente){
   try{
     const r = await fetch(`${SB_URL}/rest/v1/${table}?${filtre}`,{
-      method:"PATCH", headers:cloudHdr(), body:JSON.stringify(patch),
+      method:"PATCH", headers:cloudHdr(token||cloudToken()), body:JSON.stringify(patch),
     });
+    if(r.status===401 && !dejaRetente){
+      const nt = await cloudReconnexionSilencieuse();
+      if(nt) return cloudUpdate(table, filtre, patch, nt, true);
+    }
     return r.ok;
   }catch(e){ return false; }
 }
 
-/* ── Inscription nationale : crée le compte Firebase (auth) puis la fiche
-   Supabase associée (profil citoyen ou institution), retrouvée ensuite par
-   NUMÉRO DE TÉLÉPHONE (et non plus par id Firebase, non compatible avec le
-   schéma uuid existant). Retourne la fiche institution créée, `true` pour un
-   citoyen, `{dejaExistant:true}` si ce numéro a déjà un compte, ou `null`
-   en cas d'échec réseau. ── */
+/* ── Inscription nationale : crée le compte serveur (profil citoyen)
+   sur le projet Supabase partagé. ── */
 async function cloudSignup(compte){
   try{
-    const email = cloudEmail(compte.ph);
-    const password = cloudPass(compte.ph, compte.pin);
-    const auth = await fbSignUp(email, password);
-    if(auth.error==="EMAIL_EXISTS") return { dejaExistant:true };
-    if(auth.error || !auth.localId) return null;
-    cloudSetFbSession({ idToken:auth.idToken, refreshToken:auth.refreshToken, uid:auth.localId });
-    const deviceId = getDeviceId();
+    const r = await fetch(`${SB_URL}/auth/v1/signup`,{
+      method:"POST", headers:cloudHdr(),
+      body:JSON.stringify({
+        email: cloudEmail(compte.ph),
+        password: cloudPass(compte.ph, compte.pin),
+        data: { nm:compte.nm||"", plan:compte.plan||"gratuit", commune:compte.commune||"" },
+      }),
+    });
+    const d = await r.json();
+    const uid = d.user && d.user.id ? d.user.id : d.id;
+    if(!uid) return null;
+    if(d.access_token) cloudSetToken(d.access_token);
+    const token = d.access_token || null;
 
-    if(compte.plan==="institution"){
-      let tsId = null;
-      if(compte.typeService){
-        const ts = await cloudGet(`types_service?nom=eq.${encodeURIComponent(compte.typeService)}&select=id`);
-        tsId = ts && ts[0] ? ts[0].id : null;
-      }
-      const ligne = await cloudUpsert("institutions",{
-        nom:saneTxt(compte.nm), commune:saneTxt(compte.commune)||null, responsable:saneTxt(compte.responsable)||null,
-        telephone:compte.ph, email:compte.mail||null, statut:"en_attente",
-        auth_uid:auth.localId, type_service_id:tsId, type_service:compte.typeService||null, session_id:deviceId,
-      }, "telephone");
-      return ligne || null;
-    }
-
-    const essaiFin = new Date(Date.now()+ESSAI_DUREE_MS).toISOString();
-    await cloudUpsert("profiles",{
-      auth_uid:auth.localId, nom:saneTxt(compte.nm), telephone:compte.ph, email:compte.mail||null,
-      commune:compte.commune||null, statut:"actif", forfait:"akwaba_essai",
-      essai_fin:essaiFin, session_id:deviceId, bloque:false,
-    }, "telephone");
+    const slug = compte.plan==="premium" ? "premium" : "gratuit";
+    const forfaits = await cloudGet(`forfaits?slug=eq.${slug}&select=id`, token);
+    await cloudInsert("profiles",{
+      id:uid, nom:compte.nm, telephone:compte.ph, email:compte.mail||null,
+      commune:compte.commune||null, forfait_id:(forfaits&&forfaits[0])?forfaits[0].id:null, statut:"actif",
+    }, token);
     return true;
   }catch(e){ return null; }
 }
 
 /* ── Connexion nationale : reconnaît un compte créé sur N'IMPORTE QUEL
    appareil du pays, puis l'enregistre dans le registre local de cet
-   appareil pour les prochaines connexions hors-ligne. Chaque connexion
-   réussie écrit l'identifiant de CET appareil comme seule session active :
-   l'appareil précédemment connecté sera déconnecté (1 compte = 1 session). ── */
+   appareil pour les prochaines connexions hors-ligne. ── */
 async function cloudLogin(ph, pin){
   try{
-    const email = cloudEmail(ph);
-    const password = cloudPass(ph, pin);
-    const auth = await fbSignIn(email, password);
-    if(auth.error || !auth.localId) return null;
-    cloudSetFbSession({ idToken:auth.idToken, refreshToken:auth.refreshToken, uid:auth.localId });
-    const deviceId = getDeviceId();
+    const r = await fetch(`${SB_URL}/auth/v1/token?grant_type=password`,{
+      method:"POST", headers:cloudHdr(),
+      body:JSON.stringify({email:cloudEmail(ph), password:cloudPass(ph,pin)}),
+    });
+    if(!r.ok) return null;
+    const d = await r.json();
+    const uid = d.user && d.user.id;
+    if(!uid || !d.access_token) return null;
+    cloudSetToken(d.access_token);
+    const meta = (d.user && d.user.user_metadata) || {};
 
-    const instRows = await cloudGet(`institutions?telephone=eq.${ph}&select=*`);
-    const inst = instRows && instRows[0];
-    if(inst){
-      await cloudUpdate("institutions", `telephone=eq.${ph}`, { session_id:deviceId, derniere_connexion:new Date().toISOString() });
-      const compte = {
-        nm:inst.nom||"", ph, mail:inst.email||"",
-        commune:inst.commune||"", pin, plan:"institution",
-        statut:inst.statut||"en_attente", typeService:inst.type_service||"",
-        responsable:inst.responsable||"", cloudId:inst.id||null,
-        id:`acc-${Date.now()}`, creeLe:Date.now(),
-      };
-      cloudMemoriserLocal(compte);
-      return compte;
-    }
-
-    const rows = await cloudGet(`profiles?telephone=eq.${ph}&select=*`);
+    const rows = await cloudGet(`profiles?id=eq.${uid}&select=*,forfaits(slug)`, d.access_token);
     const prof = rows && rows[0];
-    if(!prof) return null;
-    if(prof.bloque) return { suspendu:true };
-    await cloudUpdate("profiles", `telephone=eq.${ph}`, { session_id:deviceId, derniere_connexion:new Date().toISOString() });
-    const plan = (prof.forfait && prof.forfait!=="gratuit" && prof.forfait!=="akwaba_essai") ? "premium" : "gratuit";
+    if(prof && prof.statut==="suspendu") return { suspendu:true };
+    const plan = (prof && prof.forfaits && prof.forfaits.slug==="premium") ? "premium"
+               : (meta.plan==="premium" ? "premium" : "gratuit");
     const compte = {
-      nm:prof.nom||"", ph, mail:prof.email||"",
-      commune:prof.commune||"", pin, plan,
-      essaiFin:prof.essai_fin||null, premiumExpire:prof.premium_expire||null,
+      nm:(prof&&prof.nom)||meta.nm||"", ph, mail:(prof&&prof.email)||"",
+      commune:(prof&&prof.commune)||meta.commune||"", pin, plan,
       id:`acc-${Date.now()}`, creeLe:Date.now(),
     };
     cloudMemoriserLocal(compte);
     return compte;
   }catch(e){ return null; }
-}
-
-/* ── Vérifie que CET appareil est toujours la session active du compte. Si
-   un autre appareil s'est connecté avec le même numéro depuis, l'identifiant
-   de session enregistré côté serveur ne correspond plus au nôtre : on doit
-   déconnecter cet appareil-ci. Appelé périodiquement pendant que l'app est
-   ouverte (voir la racine AlerteCI). ── */
-async function cloudSessionEncoreActive(ph){
-  if(!ph) return true;
-  const rows = await cloudGet(`profiles?telephone=eq.${ph}&select=session_id,bloque`);
-  const prof = rows && rows[0];
-  if(!prof) return true; // pas de donnée serveur = ne pas déconnecter par erreur réseau
-  if(prof.bloque) return false;
-  return prof.session_id === getDeviceId();
 }
 
 /* Ajoute au registre local un compte reconnu par le serveur (dédupliqué). */
@@ -753,38 +566,6 @@ function cloudMemoriserLocal(compte){
       window.localStorage.setItem("alerteci_comptes", JSON.stringify(liste));
     }
   }catch(e){}
-}
-
-/* ── Diffusion nationale : publie l'alerte pour tous les appareils. ── */
-function cloudPublierDiffusion(alerte){
-  cloudInsert("diffusions",{payload:alerte}).then(()=>{}).catch(()=>{});
-}
-
-/* ── Récupération des diffusions nationales de moins de 24h. ── */
-async function cloudChargerDiffusions(){
-  const depuis = new Date(Date.now()-DIFFUSION_TTL_MS).toISOString();
-  const rows = await cloudGet(`diffusions?select=payload&created_at=gte.${encodeURIComponent(depuis)}&order=created_at.desc&limit=200`);
-  if(!rows) return [];
-  return rows.map(r=>r.payload).filter(a=>a&&a.id&&a.ts);
-}
-
-/* ── Types de service pilotés par le tableau de bord administrateur. ── */
-async function cloudChargerTypesService(){
-  const rows = await cloudGet(`types_service?actif=eq.true&select=nom&order=nom`);
-  if(!rows || !rows.length) return [];
-  return rows.map(r=>r.nom);
-}
-
-/* ── Statut d'une institution (validé/refusé depuis le dashboard admin). ── */
-async function cloudStatutInstitution(cloudId){
-  const rows = await cloudGet(`institutions?id=eq.${cloudId}&select=statut`);
-  return (rows && rows[0]) ? rows[0].statut : null;
-}
-
-/* ── Validation d'institution répercutée au national (admin intégré). ── */
-function cloudValiderInstitution(cloudId, statut){
-  if(!cloudId) return;
-  cloudUpdate("institutions", `id=eq.${cloudId}`, {statut, valide_le:new Date().toISOString()});
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -805,7 +586,7 @@ async function cloudPublierUrgence(payload){
   try{
     const r = await fetch(`${SB_URL}/rest/v1/diffusions`,{
       method:"POST",
-      headers:{...cloudHdr(), "Prefer":"return=minimal"},
+      headers:{...cloudHdr(cloudToken()), "Prefer":"return=minimal"},
       body:JSON.stringify({payload:{...payload, urgence:true}}),
     });
     let msg="";
@@ -1143,17 +924,16 @@ const Login = ({go, goBack, setPlan, setUserInfo, userInfo={}, comptesInscrits=[
     if (ph.length < 10 || pinValue.length < 6) {setErr("Vérifiez votre numéro et votre code d'accès.");return;}
 
     /* ── Reconnaissance de TOUT compte créé à l'inscription ──────────────
-       On cherche dans le registre complet des comptes créés en session
-       (citoyens et institutions confondus, pas seulement le dernier) :
-       la personne doit saisir elle-même son propre code d'accès pour se
-       connecter — celui-ci n'est jamais pré-rempli ni affiché. */
+       On cherche dans le registre complet des comptes créés en session,
+       pas seulement le dernier : la personne doit saisir elle-même son
+       propre code d'accès pour se connecter — celui-ci n'est jamais
+       pré-rempli ni affiché. */
     const compte = comptesInscrits.find(c => c.ph===ph && c.pin===pinValue);
     if(compte){
       setErr(""); setLoading(true);
-      setPlan&&setPlan(compte.plan==="premium"?"premium":compte.plan==="institution"?"institution":"gratuit");
+      setPlan&&setPlan(compte.plan==="premium"?"premium":"gratuit");
       setUserInfo&&setUserInfo(compte);
-      const cible = compte.plan==="institution" ? "home_service" : "home";
-      setTimeout(() => { setLoading(false); go(cible); }, 1000);
+      setTimeout(() => { setLoading(false); go("home"); }, 1000);
       return;
     }
 
@@ -1161,7 +941,7 @@ const Login = ({go, goBack, setPlan, setUserInfo, userInfo={}, comptesInscrits=[
     if (found) {
       setErr(""); setLoading(true);
       setPlan&&setPlan(found.badge==="PREMIUM"?"premium":"gratuit");
-      setUserInfo&&setUserInfo({nm:found.label,ph:found.ph,mail:"",commune:"",pin:found.pin,statut:found.target==="home_service"?"valide":undefined,plan:found.badge==="PREMIUM"?"premium":"gratuit"});
+      setUserInfo&&setUserInfo({nm:found.label,ph:found.ph,mail:"",commune:"",pin:found.pin,plan:found.badge==="PREMIUM"?"premium":"gratuit"});
       setTimeout(() => { setLoading(false); go(found.target); }, 1000);
     } else {
       /* ── Compte inconnu sur CET appareil : vérification nationale. ──
@@ -1174,9 +954,9 @@ const Login = ({go, goBack, setPlan, setUserInfo, userInfo={}, comptesInscrits=[
         setLoading(false);
         if(!compte){ setErr("Numéro ou code d'accès incorrect."); setPin(""); return; }
         if(compte.suspendu){ setErr("Ce compte a été suspendu. Contactez le support."); setPin(""); return; }
-        setPlan&&setPlan(compte.plan==="premium"?"premium":compte.plan==="institution"?"institution":"gratuit");
+        setPlan&&setPlan(compte.plan==="premium"?"premium":"gratuit");
         setUserInfo&&setUserInfo(compte);
-        go(compte.plan==="institution" ? "home_service" : "home");
+        go("home");
       });
     }
   };
@@ -1372,8 +1152,10 @@ const Login = ({go, goBack, setPlan, setUserInfo, userInfo={}, comptesInscrits=[
     <div className="scr on" style={{display:"flex",flexDirection:"column"}}>
 
       <div style={{background:"linear-gradient(160deg,#1C1917,#292524)",padding:"36px 28px 28px",display:"flex",flexDirection:"column",alignItems:"center",gap:10}}>
-        <div style={{width:60,height:60,borderRadius:18,overflow:"hidden",boxShadow:"0 8px 20px rgba(249,115,22,.35)"}}>
-          <LogoMark s={60}/>
+        <div style={{width:60,height:60,borderRadius:"50%",background:"conic-gradient(from 0deg,#F97316,#16A34A,#fff,#F97316)",display:"flex",alignItems:"center",justifyContent:"center",position:"relative"}}>
+          <div style={{position:"absolute",inset:3,borderRadius:"50%",background:"#1C1917",display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <span style={{fontFamily:"Sora,sans-serif",fontWeight:800,fontSize:17,color:"#fff"}}>A</span>
+          </div>
         </div>
         <p style={{fontFamily:"Sora,sans-serif",fontSize:20,fontWeight:800,color:"#fff",letterSpacing:"-.5px"}}>Bon retour 👋</p>
         <p style={{fontSize:12,color:"rgba(255,255,255,.5)",textAlign:"center"}}>Connectez-vous avec votre numéro et votre code d'accès</p>
@@ -1441,14 +1223,16 @@ const UpgradeModal = ({onClose,onPay}) => (
     <div style={{width:"100%",background:"#fff",borderRadius:"28px 28px 0 0",padding:"28px 24px 32px",animation:"stin 280ms var(--eo)"}} onClick={e=>e.stopPropagation()}>
       <div style={{width:40,height:4,borderRadius:2,background:C.surfH,margin:"0 auto 20px"}}/>
       <div style={{width:56,height:56,borderRadius:16,background:C.orangeL,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 14px",fontSize:28}}>⭐</div>
-      <p style={{fontFamily:"Sora,sans-serif",fontSize:20,fontWeight:800,color:C.ink,textAlign:"center",marginBottom:8}}>Abonnement Premium</p>
-      <p style={{fontSize:13,color:C.muted,textAlign:"center",lineHeight:1.6,marginBottom:20}}>Alerte Violence et Alerte Enlèvement sont réservées aux comptes Premium après le mois d'essai gratuit Akwaba.</p>
+      <p style={{fontFamily:"Sora,sans-serif",fontSize:20,fontWeight:800,color:C.ink,textAlign:"center",marginBottom:8}}>Fonctionnalité Premium</p>
+      <p style={{fontSize:13,color:C.muted,textAlign:"center",lineHeight:1.6,marginBottom:20}}>Cette rubrique est réservée aux abonnés Premium.</p>
       <div style={{background:C.surf,borderRadius:14,padding:"12px 14px",marginBottom:18}}>
-        <div style={{display:"flex",alignItems:"center",gap:10,padding:"4px 0"}}>
-          <span style={{fontSize:18}}>⭐</span>
-          <span style={{fontSize:13,fontWeight:600,color:C.ink,flex:1}}>Abonnement annuel</span>
-          <span style={{fontSize:12,fontWeight:700,color:C.orange}}>{PRIX_PREMIUM_FCFA.toLocaleString("fr-FR")} FCFA / an</span>
-        </div>
+        {[{ic:"⭐",lb:"Forfait annuel",px:"3 000 FCFA / an"},{ic:"🔄",lb:"Forfait mensuel",px:"1 000 FCFA / mois"}].map((f,i)=>(
+          <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"4px 0"}}>
+            <span style={{fontSize:18}}>{f.ic}</span>
+            <span style={{fontSize:13,fontWeight:600,color:C.ink,flex:1}}>{f.lb}</span>
+            <span style={{fontSize:12,fontWeight:700,color:C.orange}}>{f.px}</span>
+          </div>
+        ))}
       </div>
       <button className="btn btn-p" onClick={onPay}>S'abonner <I n="arrow" s={16} c="#fff"/></button>
       <button className="btn btn-g" style={{marginTop:8}} onClick={onClose}>Plus tard</button>
@@ -1456,56 +1240,15 @@ const UpgradeModal = ({onClose,onPay}) => (
   </div>
 );
 
-/* ── FEED ALERTES INFO ─────────────────────────────────────── */
-const AlertesInfoFeed = ({go, alertesPubliques=[]}) => {
-  const alertes = [...alertesPubliques]
-    .sort((a,b)=>b.ts-a.ts)
-    .slice(0,3);
-
-  if(alertes.length===0){
-    return (
-      <div style={{padding:"0 20px"}}>
-        <div style={{background:"#fff",border:"1px solid rgba(0,0,0,.07)",borderRadius:18,padding:"20px 16px",textAlign:"center"}}>
-          <p style={{fontSize:12,color:"#A8A29E"}}>Aucune alerte active pour le moment</p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div style={{padding:"0 20px",display:"flex",flexDirection:"column",gap:10}}>
-      {alertes.map((a,i)=>(
-        <button key={a.id||i} onClick={()=>go(a.cible||"info")}
-          style={{display:"flex",alignItems:"center",gap:12,background:"#fff",border:`1px solid ${a.urgent?(a.c||"#EF4444")+"33":"rgba(0,0,0,.07)"}`,borderRadius:18,padding:"14px 16px",cursor:"pointer",textAlign:"left",width:"100%",fontFamily:"Plus Jakarta Sans,sans-serif"}}>
-          <div style={{width:42,height:42,borderRadius:13,background:a.bg||"#F5F5F4",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>{a.icon}</div>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
-              <span style={{fontSize:9,fontWeight:800,color:a.c||"#78716C",background:a.bg||"#F5F5F4",padding:"2px 7px",borderRadius:6,letterSpacing:".5px"}}>{a.service}</span>
-              {a.urgent&&<span style={{fontSize:8,fontWeight:800,color:"#fff",background:"#EF4444",padding:"2px 6px",borderRadius:6}}>URGENT</span>}
-              <span style={{fontSize:10,color:"#A8A29E"}}>{formatHeureRelative(a.ts)}</span>
-            </div>
-            <p style={{fontSize:13,fontWeight:700,color:"#1C1917",marginBottom:2,lineHeight:1.2}}>{a.titre}</p>
-            <p style={{fontSize:11,color:"#78716C",lineHeight:1.3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.apercu}</p>
-          </div>
-          <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#A8A29E" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12,5 19,12 12,19"/></svg>
-        </button>
-      ))}
-    </div>
-  );
-};
-
-const Home = ({go, plan="gratuit", userInfo={}, alertesPubliques=[]}) => {
+const Home = ({go, plan="gratuit", userInfo={}, essai=null}) => {
   const [showUpgrade,setShowUpgrade]=useState(false);
   const d=(n)=>({animationDelay:`${n*60}ms`});
   const nomAffiche = userInfo.nm || "Bienvenue";
   const initiales = nomAffiche.split(" ").map(w=>w[0]||"").join("").slice(0,2).toUpperCase()||"??";
-  const enEssai = essaiEnCours(userInfo);
-  const premiumOk = accesPremiumActif(userInfo);
-  const joursEssai = joursRestantsEssai(userInfo);
 
   const goProtected=(sc)=>{
     const premiumScreens=["violence","enlevement"];
-    if(premiumScreens.includes(sc) && !premiumOk){
+    if(plan==="gratuit" && premiumScreens.includes(sc)){
       setShowUpgrade(true);
     } else {
       go(sc);
@@ -1523,31 +1266,33 @@ const Home = ({go, plan="gratuit", userInfo={}, alertesPubliques=[]}) => {
           </div>
           <button className="av" onClick={()=>go("profil")}>{initiales}</button>
         </div>
-        {enEssai&&(
+        {plan==="gratuit"&&(
           <div className="si" style={d(0)}>
             <div className="bnr">
-              <p className="bl">✦ ESSAI AKWABA</p>
-              <p className="bt">{joursEssai} jour{joursEssai>1?"s":""} d'essai gratuit restant{joursEssai>1?"s":""}</p>
-              <p className="bd">Accès complet à Alerte Violence et Alerte Enlèvement. Ensuite, {PRIX_PREMIUM_FCFA.toLocaleString("fr-FR")} FCFA / an pour continuer.</p>
+              <p className="bl">✦ FORFAIT GRATUIT</p>
+              <p className="bt">Passez au Premium</p>
+              <p className="bd">Accédez à Alerte Violence et à Alerte Enlèvement — 3 000 FCFA/an.</p>
               <button className="sbb" onClick={()=>go("paiement")}>S'abonner <I n="arrow" s={14} c="#fff"/></button>
             </div>
           </div>
         )}
-        {!enEssai&&!premiumOk&&(
-          <div className="si" style={d(0)}>
-            <div className="bnr" style={{background:"linear-gradient(135deg,#450A0A,#7F1D1D)"}}>
-              <p className="bl" style={{color:"#FCA5A5"}}>✦ ESSAI TERMINÉ</p>
-              <p className="bt">Abonnement Premium requis</p>
-              <p className="bd">Votre mois Akwaba est terminé. Abonnez-vous ({PRIX_PREMIUM_FCFA.toLocaleString("fr-FR")} FCFA / an) pour garder l'accès à Alerte Violence et Alerte Enlèvement.</p>
-              <button className="sbb" onClick={()=>go("paiement")}>S'abonner <I n="arrow" s={14} c="#fff"/></button>
+        {plan==="premium"&&essai&&essai.actif&&(
+          <div className="si" style={{...d(0),margin:"16px 20px 0",background:"linear-gradient(135deg,#7C2D12,#C2410C)",borderRadius:24,padding:"16px 20px",display:"flex",alignItems:"center",gap:12}}>
+            <span style={{fontSize:24}}>🎁</span>
+            <div style={{flex:1}}>
+              <p style={{fontSize:12,fontWeight:700,color:"rgba(255,255,255,.75)",textTransform:"uppercase",letterSpacing:"1px"}}>Essai gratuit actif</p>
+              <p style={{fontSize:14,fontWeight:800,color:"#fff",marginTop:2}}>
+                {essai.joursRestants<=1?"Dernier jour":`Encore ${essai.joursRestants} jours`} d'accès à Alerte Violence et Alerte Enlèvement
+              </p>
+              <button className="sbb" style={{marginTop:8,background:"rgba(255,255,255,.18)"}} onClick={()=>go("paiement")}>S'abonner maintenant <I n="arrow" s={14} c="#fff"/></button>
             </div>
           </div>
         )}
-        {!enEssai&&premiumOk&&(
+        {plan==="premium"&&(!essai||!essai.actif)&&(
           <div className="si" style={{...d(0),margin:"16px 20px 0",background:"linear-gradient(135deg,#064E3B,#065F46)",borderRadius:24,padding:"16px 20px",display:"flex",alignItems:"center",gap:12}}>
             <span style={{fontSize:24}}>⭐</span>
             <div>
-              <p style={{fontSize:12,fontWeight:700,color:"rgba(255,255,255,.6)",textTransform:"uppercase",letterSpacing:"1px"}}>Abonnement Premium actif</p>
+              <p style={{fontSize:12,fontWeight:700,color:"rgba(255,255,255,.6)",textTransform:"uppercase",letterSpacing:"1px"}}>Forfait Premium actif</p>
               <p style={{fontSize:14,fontWeight:800,color:"#fff",marginTop:2}}>Accès complet à Alerte Violence et Alerte Enlèvement</p>
             </div>
           </div>
@@ -1555,12 +1300,12 @@ const Home = ({go, plan="gratuit", userInfo={}, alertesPubliques=[]}) => {
         <div className="sh" style={{marginTop:8}}><span className="stl">Accès rapide</span></div>
         <div className="qa">
           {[
-            {sc:"violence",lock:!premiumOk,
-              bg:!premiumOk?"linear-gradient(135deg,#94A3B8,#64748B)":"linear-gradient(135deg,#FF6B35,#F97316)",
+            {sc:"violence",lock:plan==="gratuit",
+              bg:plan==="gratuit"?"linear-gradient(135deg,#94A3B8,#64748B)":"linear-gradient(135deg,#FF6B35,#F97316)",
               svg:<svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 2C8.13 2 5 5.13 5 9c0 2.38 1.19 4.47 3 5.74V17a1 1 0 001 1h6a1 1 0 001-1v-2.26C17.81 13.47 19 11.38 19 9c0-3.87-3.13-7-7-7z" fill="#fff" opacity=".9"/><path d="M9 21h6M10 18v3M14 18v3" stroke="#fff" strokeWidth="1.5" strokeLinecap="round"/></svg>,
               lb:"Alerte\nViolence"},
-            {sc:"enlevement",lock:!premiumOk,
-              bg:!premiumOk?"linear-gradient(135deg,#94A3B8,#64748B)":"linear-gradient(135deg,#7C3AED,#5B21B6)",
+            {sc:"enlevement",lock:plan==="gratuit",
+              bg:plan==="gratuit"?"linear-gradient(135deg,#94A3B8,#64748B)":"linear-gradient(135deg,#7C3AED,#5B21B6)",
               svg:<svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z" fill="#fff" opacity=".9"/><circle cx="12" cy="10" r="3" fill="#5B21B6"/></svg>,
               lb:"Alerte\nEnlèvement"},
           ].map((it,i)=>(
@@ -1585,16 +1330,6 @@ const Home = ({go, plan="gratuit", userInfo={}, alertesPubliques=[]}) => {
           ))}
         </div>
 
-        {FEATURES.alerteInfo&&(
-          <div className="sh">
-            <span className="stl">Alertes & Informations</span>
-            <button className="sea" onClick={()=>go("info")}>Voir tout</button>
-          </div>
-        )}
-        {/* Rubrique masquée à la demande pour cette version — le code,
-            les données (alertesPubliques) et la diffusion restent intacts.
-        <AlertesInfoFeed go={go} alertesPubliques={alertesPubliques}/>
-        */}
         <div style={{height:20}}/>
       </div>
       <Nav a="home" go={go}/>
@@ -1727,13 +1462,6 @@ const Violence = ({go,goBack,userInfo={}}) => {
     try{ const s=window.localStorage.getItem("alerteci_contacts_violence"); return s?JSON.parse(s):[]; }catch(e){ return []; }
   });
   useEffect(()=>{ try{ window.localStorage.setItem("alerteci_contacts_violence", JSON.stringify(contacts)); }catch(e){} },[contacts]);
-  /* Synchronise la liste au national (table contacts_confiance, colonne
-     "violence") — utile pour de futures fonctionnalités côté serveur,
-     sans changer le fonctionnement actuel (envoi direct par numéro). */
-  useEffect(()=>{
-    if(!userInfo.ph) return;
-    cloudUpsert("contacts_confiance", {telephone:userInfo.ph, violence:contacts}, "telephone").catch(()=>{});
-  },[contacts, userInfo.ph]);
   const [showContacts,setShowContacts]=useState(false);
   const [editContact,setEditContact]=useState(null); // null | {idx, nm, ph} | "new"
   const COULEURS=["#F97316","#3B82F6","#16A34A","#8B5CF6","#EC4899","#EF4444"];
@@ -2515,7 +2243,7 @@ const Violence = ({go,goBack,userInfo={}}) => {
                 try{
                   const r=await fetch(SB_URL+"/rest/v1/diffusions",{
                     method:"POST",
-                    headers:{...cloudHdr(),"Prefer":"return=minimal"},
+                    headers:{...cloudHdr(cloudToken()),"Prefer":"return=minimal"},
                     body:JSON.stringify({payload:{diag:true,urgence:false,cibles:[],ts:Date.now()}}),
                   });
                   if(r.ok) res[2]={l:"3. Envoi d'alerte au serveur",ok:true,d:"Le serveur accepte les alertes (code "+r.status+")."};
@@ -2529,7 +2257,7 @@ const Violence = ({go,goBack,userInfo={}}) => {
                 // Étape 4 — lecture serveur (ce que fait le téléphone du contact)
                 res.push({l:"4. Réception des alertes",ok:null,d:"test de lecture…"}); maj();
                 try{
-                  const r=await fetch(SB_URL+"/rest/v1/diffusions?select=id&order=created_at.desc&limit=1",{headers:cloudHdr()});
+                  const r=await fetch(SB_URL+"/rest/v1/diffusions?select=id&order=created_at.desc&limit=1",{headers:cloudHdr(cloudToken())});
                   if(r.ok){ const d=await r.json(); res[3]={l:"4. Réception des alertes",ok:true,d:"Lecture OK ("+(Array.isArray(d)?d.length:0)+" alerte(s) visibles)."}; }
                   else{
                     let m="Erreur HTTP "+r.status;
@@ -2548,11 +2276,11 @@ const Violence = ({go,goBack,userInfo={}}) => {
                   const monNum=normaliserPh(userInfo.ph);
                   const idTest="diagtest-"+Date.now();
                   await fetch(SB_URL+"/rest/v1/diffusions",{method:"POST",
-                    headers:{...cloudHdr(),"Prefer":"return=minimal"},
+                    headers:{...cloudHdr(cloudToken()),"Prefer":"return=minimal"},
                     body:JSON.stringify({payload:{type:"violence",diagtest:true,urgence:true,alerteId:idTest,victime:{nm:"Test",ph:"0000000000"},cibles:[monNum],ts:Date.now()}})});
                   await new Promise(r=>setTimeout(r,1500));
                   const depuis=new Date(Date.now()-3600000).toISOString();
-                  const r=await fetch(SB_URL+"/rest/v1/diffusions?select=payload&created_at=gte."+encodeURIComponent(depuis)+"&order=created_at.desc&limit=50",{headers:cloudHdr()});
+                  const r=await fetch(SB_URL+"/rest/v1/diffusions?select=payload&created_at=gte."+encodeURIComponent(depuis)+"&order=created_at.desc&limit=50",{headers:cloudHdr(cloudToken())});
                   const rows=r.ok?await r.json():[];
                   const revenue=(rows||[]).map(x=>x.payload).find(p=>p&&p.alerteId===idTest&&Array.isArray(p.cibles)&&p.cibles.map(normaliserPh).includes(monNum));
                   if(revenue){
@@ -2717,74 +2445,42 @@ const Violence = ({go,goBack,userInfo={}}) => {
 
 
 /* ══════════════════════════════════════════════════════════════════════════════
-   RUBRIQUE ENLÈVEMENT / DISPARITION — position toujours active, consultée
-   à la demande. La position de l'utilisateur se met à jour en continu en
-   arrière-plan (service natif, démarré automatiquement à la connexion —
-   voir BgLocation dans AlerteCI) sans jamais être poussée à personne. Un
-   contact de confiance ne peut la consulter qu'en recherchant explicitement
-   le numéro, et seulement s'il est autorisé (vérifié côté serveur par
-   supabase-edge-function/localiser-contact via la table contacts_confiance).
+   RUBRIQUE ENLÈVEMENT / DISPARITION — suivi GPS en direct
+   La personne en danger active le partage de sa position. Sa position est
+   envoyée automatiquement à 3 contacts désignés et se met à jour en continu
+   (via watchPosition) à chaque déplacement réel détecté par le GPS, sans
+   action supplémentaire de sa part. Côté destinataire, la position affichée
+   se synchronise dès que le partage émetteur est actualisé (état partagé en
+   temps réel au niveau de l'app, voir partagesGps dans AlerteCI).
 ══════════════════════════════════════════════════════════════════════════════ */
-const Enlevement = ({go,goBack,userInfo={}}) => {
+const Enlevement = ({go,goBack,userInfo={},partagesGps=[],demarrerPartageGps,arreterPartageGps,majPositionGps}) => {
   const nom = userInfo.nm && userInfo.nm.trim() ? userInfo.nm.trim() : "l'utilisateur";
   const [contacts,setContacts]=useState(()=>{
     try{ const s=window.localStorage.getItem("alerteci_contacts_enlevement"); return s?JSON.parse(s):[]; }catch(e){ return []; }
   });
   useEffect(()=>{ try{ window.localStorage.setItem("alerteci_contacts_enlevement", JSON.stringify(contacts)); }catch(e){} },[contacts]);
-  /* ── Synchronisation nationale des contacts de confiance ────────────────
-     Indispensable : c'est CETTE liste, côté serveur, que la fonction
-     localiser-contact consulte pour vérifier qu'un numéro qui recherche ma
-     position a bien le droit de la voir. Sans cette synchronisation, la
-     recherche échouerait toujours, même pour un contact réellement ajouté. */
-  useEffect(()=>{
-    if(!userInfo.ph) return;
-    cloudUpsert("contacts_confiance", {telephone:userInfo.ph, enlevement:contacts}, "telephone").catch(()=>{});
-  },[contacts, userInfo.ph]);
   const [editContact,setEditContact]=useState(null); // null | {idx?, nm, ph}
   const COULEURS=["#7C3AED","#2563EB","#16A34A","#F97316","#EC4899","#0EA5E9"];
   const [notifContactEnvoyee,setNotifContactEnvoyee]=useState(null);
 
-  /* ── Recherche de la position d'un contact (modèle « à la demande ») ────
-     Ma propre position se met à jour en continu en arrière-plan dès la
-     connexion (voir BgLocation.start, déclenché au niveau racine) sans
-     jamais être poussée à personne. Un contact qui m'a comme numéro
-     enregistré chez lui recherche MON numéro ici pour obtenir ma position
-     en direct — la fonction serveur localiser-contact vérifie d'abord qu'il
-     figure bien dans ma liste de contacts de confiance. ── */
-  const [rechNum,setRechNum]=useState("");
-  const [rechResultat,setRechResultat]=useState(null); // {lat,lng,precision,updatedAt}
-  const [rechErreur,setRechErreur]=useState("");
-  const [rechEnCours,setRechEnCours]=useState(false);
-  const rechIntervalRef=useRef(null);
+  const [partageActif,setPartageActif]=useState(false);
+  const [position,setPosition]=useState(null); // {lat,lng,precision,ts}
+  const [erreurGps,setErreurGps]=useState("");
+  const watchIdRef=useRef(null);
+  const monPartageId=useRef(`moi-${Date.now()}`);
 
-  const rechercherPosition=async(silencieux)=>{
-    if(rechNum.length!==10) return;
-    if(!silencieux){ setRechEnCours(true); setRechErreur(""); }
-    const res=await fetch(`${SB_URL}/functions/v1/localiser-contact`,{
-      method:"POST", headers:{"Content-Type":"application/json","apikey":SB_KEY},
-      body:JSON.stringify({demandeur:userInfo.ph, cible:rechNum}),
-    }).then(r=>r.json()).catch(()=>({error:"RESEAU"}));
-    setRechEnCours(false);
-    if(res.error){
-      setRechResultat(null);
-      clearInterval(rechIntervalRef.current);
-      setRechErreur(
-        res.error==="NON_AUTORISE" ? "Ce numéro ne vous a pas enregistré comme contact de confiance."
-        : res.error==="POSITION_INDISPONIBLE" ? "Ce numéro n'a pas encore de position disponible (l'app doit être installée et ouverte au moins une fois, avec la localisation autorisée)."
-        : res.error==="TROP_DE_TENTATIVES" ? "Trop de recherches, réessayez dans une minute."
-        : "Numéro introuvable ou erreur réseau."
-      );
-      return;
-    }
-    setRechErreur("");
-    setRechResultat(res);
-    if(!silencieux){
-      clearInterval(rechIntervalRef.current);
-      rechIntervalRef.current=setInterval(()=>rechercherPosition(true),15000);
-    }
-  };
-  useEffect(()=>()=>clearInterval(rechIntervalRef.current),[]);
-  const rechSecEcoulees = rechResultat ? Math.max(0,Math.round((Date.now()-new Date(rechResultat.updatedAt).getTime())/1000)) : null;
+  /* ── Note vocale de signalement jointe au partage GPS ──────────────────
+     Enregistrée une fois (5s max) au moment de l'activation du partage,
+     elle est envoyée avec la position à chaque contact de confiance et
+     reste accessible/écoutable depuis l'écran tant que le partage est actif. */
+  const [noteVocale,setNoteVocale]=useState(null); // {url, duree}
+  const [enregNote,setEnregNote]=useState(false); // enregistrement en cours
+  const [lectureNote,setLectureNote]=useState(false);
+  const noteRecorderRef=useRef(null);
+  const noteStreamRef=useRef(null);
+  const noteChunksRef=useRef([]);
+  const noteDebutRef=useRef(0);
+  const notePlayerRef=useRef(null);
 
   const saveContact=()=>{
     if(!editContact||!editContact.nm.trim()||editContact.ph.length<10) return;
@@ -2818,66 +2514,309 @@ const Enlevement = ({go,goBack,userInfo={}}) => {
 
   const supprimerContact=(i)=>setContacts(p=>p.filter((_,j)=>j!==i));
 
+  /* ── Enregistrement de la note vocale de signalement (5s max) ───────────
+     Jointe automatiquement à la position GPS transmise aux contacts. */
+  const enregistrerNoteVocale=async()=>{
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia||!window.MediaRecorder){
+      return;
+    }
+    setEnregNote(true);
+    let stream;
+    const securite=setTimeout(()=>{
+      setEnregNote(false);
+      try{ noteStreamRef.current&&noteStreamRef.current.getTracks().forEach(t=>t.stop()); }catch(e){}
+    },4000);
+    try{
+      stream=await navigator.mediaDevices.getUserMedia({audio:true});
+    }catch(e){
+      clearTimeout(securite);
+      setEnregNote(false);
+      return;
+    }
+    clearTimeout(securite);
+    noteStreamRef.current=stream;
+    noteChunksRef.current=[];
+    noteDebutRef.current=Date.now();
+    let mr;
+    try{
+      mr=new window.MediaRecorder(stream);
+    }catch(e){
+      stream.getTracks().forEach(t=>t.stop());
+      setEnregNote(false);
+      return;
+    }
+    mr.ondataavailable=(e)=>{ if(e.data&&e.data.size>0) noteChunksRef.current.push(e.data); };
+    mr.onstop=()=>{
+      const duree=Math.max(0.1,(Date.now()-noteDebutRef.current)/1000);
+      const blob=new Blob(noteChunksRef.current,{type:mr.mimeType||"audio/webm"});
+      const url=URL.createObjectURL(blob);
+      setNoteVocale({url,duree});
+      setEnregNote(false);
+      try{ stream.getTracks().forEach(t=>t.stop()); }catch(e){}
+      playNotif();
+    };
+    noteRecorderRef.current=mr;
+    try{
+      mr.start();
+      setTimeout(()=>{ try{ if(mr.state==="recording") mr.stop(); }catch(e){} },5000);
+    }catch(e){
+      stream.getTracks().forEach(t=>t.stop());
+      setEnregNote(false);
+    }
+  };
+
+  const arreterEnregNote=()=>{
+    try{ noteRecorderRef.current&&noteRecorderRef.current.state==="recording"&&noteRecorderRef.current.stop(); }catch(e){}
+    try{ noteStreamRef.current&&noteStreamRef.current.getTracks().forEach(t=>t.stop()); }catch(e){}
+    setEnregNote(false);
+  };
+
+  /* ── Démarrage du partage GPS en direct ──────────────────────────────────
+     watchPosition déclenche un nouvel envoi à chaque actualisation réelle de
+     la position par le GPS de l'appareil — aucune action manuelle requise. */
+  /* Envoi throttlé de la position aux contacts de confiance : le serveur
+     achemine le lien de position en direct vers leurs numéros. */
+  const dernierEnvoiRef=useRef(0);
+  const retryGpsRef=useRef(null);
+  const envoyerPositionAuxContacts=(p)=>{
+    const maintenant=Date.now();
+    if(maintenant-dernierEnvoiRef.current<10000 && p) return; // max 1 envoi / 10s
+    dernierEnvoiRef.current=maintenant;
+    cloudPublierUrgence({
+      type:"gps",
+      alerteId:monPartageId.current,
+      victime:{ nm:nom, ph:userInfo.ph||"" },
+      cibles:contacts.map(c=>c.ph),
+      gps:p?{lat:p.lat,lng:p.lng,precision:p.precision}:null,
+      lienMaps:p?`https://maps.google.com/?q=${p.lat},${p.lng}`:null,
+      ts:maintenant,
+    });
+  };
+
+  const activerPartage=()=>{
+    setErreurGps("");
+    setPartageActif(true);
+    demarrerPartageGps&&demarrerPartageGps(monPartageId.current,nom);
+    /* IMPORTANT : aucune sirène ICI. La position part immédiatement vers
+       les contacts de confiance, et c'est CHEZ EUX que l'alarme sonne en
+       continu, avec le suivi de position en direct. Le téléphone de la
+       personne suivie reste discret. */
+    playNotif();
+
+    /* 1. Les contacts de confiance sont prévenus IMMÉDIATEMENT, même si la
+       position n'est pas encore disponible — le lien suivra dès qu'elle l'est. */
+    dernierEnvoiRef.current=0;
+    envoyerPositionAuxContacts(null);
+    dernierEnvoiRef.current=0;
+
+    const traiterPosition=(pos)=>{
+      const p={
+        lat:pos.coords.latitude, lng:pos.coords.longitude,
+        precision:Math.round(pos.coords.accuracy||0), ts:Date.now(),
+      };
+      setErreurGps("");
+      setPosition(p);
+      majPositionGps&&majPositionGps(monPartageId.current,{
+        id:monPartageId.current, nom, ph:userInfo.ph||"",
+        lat:p.lat, lng:p.lng, precision:p.precision, ts:p.ts,
+        contacts:contacts.map(c=>c.nm),
+        noteVocale:noteVocale,
+      });
+      envoyerPositionAuxContacts(p);
+    };
+
+    /* 2. Suivi continu, avec relance automatique : tant qu'aucune position
+       n'arrive, on redemande toutes les 10 secondes — le partage n'est
+       jamais bloqué, il attend simplement l'autorisation ou le signal GPS. */
+    if(navigator.geolocation){
+      watchIdRef.current=navigator.geolocation.watchPosition(
+        traiterPosition,
+        ()=>{ setErreurGps("Recherche de position en cours… Si votre téléphone demande l'autorisation de localisation, acceptez-la : le partage démarrera tout seul."); },
+        {enableHighAccuracy:true,maximumAge:0,timeout:15000}
+      );
+      retryGpsRef.current=setInterval(()=>{
+        navigator.geolocation.getCurrentPosition(traiterPosition,()=>{},{enableHighAccuracy:true,timeout:8000,maximumAge:0});
+      },10000);
+    } else {
+      setErreurGps("Recherche de position en cours… Le lien sera transmis à vos contacts dès qu'une position est disponible.");
+    }
+  };
+
+  const arreterPartage=()=>{
+    if(watchIdRef.current!==null){
+      try{ navigator.geolocation.clearWatch(watchIdRef.current); }catch(e){}
+      watchIdRef.current=null;
+    }
+    clearInterval(retryGpsRef.current);
+    /* Prévenir les contacts que le partage est terminé. */
+    cloudPublierUrgence({
+      type:"gps", fin:true, alerteId:monPartageId.current,
+      victime:{ nm:nom, ph:userInfo.ph||"" },
+      cibles:contacts.map(c=>c.ph), ts:Date.now(),
+    });
+    monPartageId.current=`moi-${Date.now()}`;
+    setErreurGps("");
+    setPartageActif(false);
+    arreterPartageGps&&arreterPartageGps(monPartageId.current);
+  };
+
+  useEffect(()=>()=>{
+    if(watchIdRef.current!==null){
+      try{ navigator.geolocation.clearWatch(watchIdRef.current); }catch(e){}
+    }
+    clearInterval(retryGpsRef.current);
+    try{ noteRecorderRef.current&&noteRecorderRef.current.state==="recording"&&noteRecorderRef.current.stop(); }catch(e){}
+    try{ noteStreamRef.current&&noteStreamRef.current.getTracks().forEach(t=>t.stop()); }catch(e){}
+  },[]);
+
+  const dureeEcoulee = position ? Math.max(0,Math.round((Date.now()-position.ts)/1000)) : null;
+
   return (
     <div className="scr on" style={{display:"flex"}}>
       <div className="scrl">
         <div className="scrhdr">
-          <button className="bk" onClick={goBack}><I n="back" s={18} c={C.ink}/></button>
-          <p className="scrttl">Alerte Enlèvement</p>
-        </div>
-
-        <div className="vhero" style={{background:"linear-gradient(145deg,#312E81,#4338CA)"}}>
-          <div className="pr">
-            <div className="pi" style={{background:"#4F46E5"}}>
-              <I n="pin" s={28} c="#fff"/>
-            </div>
-          </div>
-          <p className="hl">🟢 Position toujours active</p>
-          <p className="ht">Votre position se met à jour en continu</p>
-          <p className="hd">
-            Elle n'est envoyée à personne automatiquement. Un contact de confiance ne peut la consulter qu'en recherchant explicitement votre numéro ci-dessous (sur son propre téléphone) — et uniquement si vous l'avez ajouté comme contact de confiance.
+          <button className="bk" onClick={goBack}><I n="back" s={18} c={partageActif?"#7C3AED":C.ink}/></button>
+          <p className="scrttl" style={{color:partageActif?"#7C3AED":C.ink}}>
+            {partageActif?"🟣 PARTAGE GPS ACTIF":"Alerte Enlèvement"}
           </p>
         </div>
 
-        {/* ── Rechercher la position d'un contact de confiance ────────────── */}
-        <div style={{margin:"0 20px 16px",background:"#fff",border:"1.5px solid rgba(124,58,237,.25)",borderRadius:18,padding:"16px"}}>
-          <p style={{fontSize:13,fontWeight:800,color:C.ink,marginBottom:4}}>🔎 Rechercher un contact</p>
-          <p style={{fontSize:11,color:C.muted,lineHeight:1.5,marginBottom:12}}>Entrez le numéro de la personne qui vous a désigné(e) comme contact de confiance.</p>
-          <div style={{display:"flex",gap:8}}>
-            <div className="if" style={{flex:1,marginBottom:0,border:`1.5px solid ${rechNum.length===10?"rgba(124,58,237,.4)":C.border}`}}>
-              <I n="phone" s={16} c={C.faint}/>
-              <input type="tel" value={rechNum} maxLength={10}
-                onChange={e=>{setRechNum(e.target.value.replace(/\D/g,"").slice(0,10));setRechResultat(null);setRechErreur("");clearInterval(rechIntervalRef.current);}}
-                placeholder="Numéro (10 chiffres)"/>
+        <div className="vhero" style={{background:partageActif?"linear-gradient(145deg,#4C1D95,#6D28D9)":"linear-gradient(145deg,#312E81,#4338CA)"}}>
+          <div className="pr">
+            <div className="pi" style={{background:partageActif?"#7C3AED":"#4F46E5"}}>
+              <I n="pin" s={28} c="#fff"/>
             </div>
-            <button onClick={()=>rechercherPosition(false)} disabled={rechNum.length!==10||rechEnCours}
-              style={{padding:"0 18px",borderRadius:14,border:"none",cursor:"pointer",background:"#7C3AED",color:"#fff",fontFamily:"Plus Jakarta Sans",fontSize:13,fontWeight:700,opacity:rechNum.length===10&&!rechEnCours?1:.5,flexShrink:0}}>
-              {rechEnCours?"...":"Rechercher"}
-            </button>
           </div>
+          <p className="hl">{partageActif?"📍 Position partagée en direct":"Suivi GPS contre les disparitions"}</p>
+          <p className="ht">{partageActif?"Vos contacts vous suivent en temps réel":"Prêt à activer le partage"}</p>
+          <p className="hd">
+            {partageActif
+              ?`Votre position se met à jour automatiquement et s'affiche en direct chez vos ${contacts.length||3} contacts de confiance, qui voient votre déplacement à chaque actualisation GPS.`
+              :"En cas de disparition ou d'enlèvement présumé, activez le partage : votre position GPS sera envoyée en direct à vos contacts de confiance et se mettra à jour automatiquement."}
+          </p>
+        </div>
 
-          {rechErreur&&(
-            <div style={{marginTop:12,background:"#FFF7ED",border:"1px solid rgba(249,115,22,.25)",borderRadius:12,padding:"10px 12px"}}>
-              <p style={{fontSize:12,color:"#9A3412",fontWeight:600,lineHeight:1.5}}>{rechErreur}</p>
+        {erreurGps&&(
+          <div style={{margin:"0 20px 12px",background:"#FFF7ED",border:"1px solid rgba(249,115,22,.25)",borderRadius:14,padding:"12px 14px",display:"flex",alignItems:"center",gap:8}}>
+            <span style={{display:"inline-block",width:14,height:14,border:"2px solid rgba(249,115,22,.4)",borderTopColor:"#F97316",borderRadius:"50%",animation:"spin 1s linear infinite",flexShrink:0}}/>
+            <p style={{fontSize:12,color:"#9A3412",fontWeight:600,lineHeight:1.5}}>{erreurGps}</p>
+          </div>
+        )}
+
+        {partageActif&&position&&(
+          <div style={{margin:"0 20px 12px",background:"#fff",border:"1.5px solid rgba(124,58,237,.25)",borderRadius:16,padding:"14px 16px"}}>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+              <div style={{width:10,height:10,borderRadius:"50%",background:"#7C3AED",animation:"bk 1.4s ease infinite",flexShrink:0}}/>
+              <p style={{fontSize:12,fontWeight:800,color:C.ink}}>Position actuelle</p>
+              <span style={{marginLeft:"auto",fontSize:10,fontWeight:700,color:C.muted}}>
+                {dureeEcoulee<5?"À l'instant":`Il y a ${dureeEcoulee}s`}
+              </span>
             </div>
-          )}
-
-          {rechResultat&&(
-            <div style={{marginTop:12,paddingTop:12,borderTop:`1px solid ${C.border}`}}>
-              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-                <div style={{width:10,height:10,borderRadius:"50%",background:"#7C3AED",animation:"bk 1.4s ease infinite",flexShrink:0}}/>
-                <p style={{fontSize:12,fontWeight:800,color:C.ink}}>Position trouvée</p>
-                <span style={{marginLeft:"auto",fontSize:10,fontWeight:700,color:rechSecEcoulees<60?C.green:C.muted}}>
-                  {rechSecEcoulees<5?"À l'instant":`Il y a ${rechSecEcoulees}s`}
-                </span>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+              <div style={{background:C.surf,borderRadius:10,padding:"8px 10px"}}>
+                <p style={{fontSize:9,fontWeight:700,color:C.faint,textTransform:"uppercase"}}>Latitude</p>
+                <p style={{fontSize:13,fontWeight:700,color:C.ink,fontFamily:"monospace"}}>{position.lat.toFixed(5)}</p>
               </div>
-              <p style={{fontSize:11,color:C.muted,marginBottom:10}}>Précision ≈ {rechResultat.precision}m · Actualisation automatique toutes les 15 s</p>
-              <a href={`https://www.google.com/maps?q=${rechResultat.lat},${rechResultat.lng}`}
-                target="_blank" rel="noreferrer"
-                style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,padding:"10px",borderRadius:10,background:"#F5F3FF",color:"#7C3AED",fontSize:12,fontWeight:700,textDecoration:"none",fontFamily:"Plus Jakarta Sans"}}>
-                <I n="pin" s={14} c="#7C3AED"/> Voir sur la carte (en direct)
-              </a>
+              <div style={{background:C.surf,borderRadius:10,padding:"8px 10px"}}>
+                <p style={{fontSize:9,fontWeight:700,color:C.faint,textTransform:"uppercase"}}>Longitude</p>
+                <p style={{fontSize:13,fontWeight:700,color:C.ink,fontFamily:"monospace"}}>{position.lng.toFixed(5)}</p>
+              </div>
             </div>
+            <p style={{fontSize:11,color:C.muted}}>Précision ≈ {position.precision}m · Mise à jour automatique à chaque déplacement</p>
+
+            <audio ref={notePlayerRef} style={{display:"none"}} onEnded={()=>setLectureNote(false)}/>
+            <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${C.border}`}}>
+              <p style={{fontSize:10,fontWeight:700,color:C.faint,textTransform:"uppercase",letterSpacing:".5px",marginBottom:6}}>🎙️ Note vocale de signalement</p>
+              {enregNote?(
+                <div style={{display:"flex",alignItems:"center",gap:8,background:"#FFF1F2",borderRadius:10,padding:"8px 10px"}}>
+                  <div style={{width:8,height:8,borderRadius:"50%",background:"#EF4444",animation:"bk 0.6s ease infinite",flexShrink:0}}/>
+                  <span style={{fontSize:12,fontWeight:700,color:"#EF4444",flex:1}}>🎙️ Enregistrement...</span>
+                  <button onClick={arreterEnregNote}
+                    style={{fontSize:10,fontWeight:700,color:C.faint,background:"#fff",border:`1px solid ${C.border}`,borderRadius:8,padding:"3px 8px",cursor:"pointer",fontFamily:"Plus Jakarta Sans"}}>✕</button>
+                </div>
+              ):noteVocale?(
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <button
+                    onClick={()=>{
+                      if(!notePlayerRef.current) return;
+                      if(lectureNote){ notePlayerRef.current.pause(); setLectureNote(false); }
+                      else { notePlayerRef.current.src=noteVocale.url; notePlayerRef.current.play().catch(()=>{}); setLectureNote(true); }
+                    }}
+                    style={{display:"flex",alignItems:"center",gap:6,background:"#F5F3FF",border:"none",borderRadius:10,padding:"7px 12px",cursor:"pointer",fontFamily:"Plus Jakarta Sans",flex:1}}>
+                    <span style={{fontSize:13}}>{lectureNote?"⏸":"▶️"}</span>
+                    <span style={{fontSize:12,fontWeight:700,color:"#7C3AED"}}>
+                      {lectureNote?"Lecture...":`Note vocale · ${noteVocale.duree.toFixed(1)}s`}
+                    </span>
+                  </button>
+                  <button onClick={enregistrerNoteVocale}
+                    style={{fontSize:11,fontWeight:700,color:"#7C3AED",background:"#F5F3FF",border:"none",borderRadius:10,padding:"7px 10px",cursor:"pointer",fontFamily:"Plus Jakarta Sans",flexShrink:0}}>
+                    🔄
+                  </button>
+                </div>
+              ):(
+                <button onClick={enregistrerNoteVocale}
+                  style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,width:"100%",background:"#F5F3FF",border:"none",borderRadius:10,padding:"9px",cursor:"pointer",fontFamily:"Plus Jakarta Sans",fontSize:12,fontWeight:700,color:"#7C3AED"}}>
+                  <I n="mic" s={14} c="#7C3AED"/> Enregistrer une note vocale (5s max)
+                </button>
+              )}
+              <p style={{fontSize:10,color:C.faint,marginTop:6,lineHeight:1.4}}>Décrivez la situation à voix haute — cette note est envoyée avec votre position à vos 3 contacts de confiance.</p>
+            </div>
+
+            <a
+              href={`https://www.google.com/maps?q=${position.lat},${position.lng}`}
+              target="_blank" rel="noreferrer"
+              style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,marginTop:10,padding:"9px",borderRadius:10,background:"#F5F3FF",color:"#7C3AED",fontSize:12,fontWeight:700,textDecoration:"none",fontFamily:"Plus Jakarta Sans"}}>
+              <I n="pin" s={14} c="#7C3AED"/> Voir sur la carte
+            </a>
+
+            {/* ── Envoi du lien Google Maps de suivi aux contacts ─────────────
+               Chaque bouton ouvre le SMS ou WhatsApp du contact, déjà rempli
+               avec le lien Google Maps de la position ACTUELLE : le contact
+               qui l'ouvre est redirigé directement sur Google Maps, sur la
+               position exacte. Le lien est régénéré avec la dernière position
+               connue à chaque appui — renvoyer = actualiser le suivi. ── */}
+            <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${C.border}`}}>
+              <p style={{fontSize:10,fontWeight:700,color:C.faint,textTransform:"uppercase",letterSpacing:".5px",marginBottom:6}}>📤 Envoyer le lien de suivi aux contacts</p>
+              {contacts.length===0?(
+                <p style={{fontSize:11,color:C.muted,lineHeight:1.4}}>Ajoutez vos contacts de confiance ci-dessous : vous pourrez leur envoyer le lien Google Maps de votre position en un appui.</p>
+              ):(
+                <>
+                  {contacts.map((ct,i)=>{
+                    const lienMaps=`https://www.google.com/maps?q=${position.lat},${position.lng}`;
+                    const message=`🆘 ALERTE CI — ${nom} partage sa position GPS en direct. Suivez sa position sur Google Maps : ${lienMaps}`;
+                    const telInternational=`225${String(ct.ph).replace(/\D/g,"")}`;
+                    return (
+                      <div key={i} style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                        <div style={{width:28,height:28,borderRadius:9,background:ct.c,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,color:"#fff",flexShrink:0}}>{ct.in}</div>
+                        <span style={{fontSize:12,fontWeight:700,color:C.ink,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ct.nm}</span>
+                        <a href={`sms:${ct.ph}?&body=${encodeURIComponent(message)}`}
+                          style={{fontSize:11,fontWeight:700,color:"#7C3AED",background:"#F5F3FF",borderRadius:9,padding:"6px 10px",textDecoration:"none",fontFamily:"Plus Jakarta Sans",flexShrink:0}}>
+                          💬 SMS
+                        </a>
+                        <a href={`https://wa.me/${telInternational}?text=${encodeURIComponent(message)}`}
+                          target="_blank" rel="noreferrer"
+                          style={{fontSize:11,fontWeight:700,color:"#16A34A",background:C.greenL,borderRadius:9,padding:"6px 10px",textDecoration:"none",fontFamily:"Plus Jakarta Sans",flexShrink:0}}>
+                          🟢 WhatsApp
+                        </a>
+                      </div>
+                    );
+                  })}
+                  <p style={{fontSize:10,color:C.faint,marginTop:4,lineHeight:1.4}}>Le lien envoyé contient votre position au moment de l'envoi — renvoyez-le après un déplacement pour actualiser le suivi chez vos contacts.</p>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        <div style={{padding:"0 20px 12px"}}>
+          {!partageActif?(
+            <button className="btn btn-p" style={{background:"linear-gradient(135deg,#7C3AED,#6D28D9)"}} onClick={activerPartage}>
+              <I n="pin" s={16} c="#fff"/>Activer le partage GPS en direct
+            </button>
+          ):(
+            <button className="btn btn-g" onClick={arreterPartage}>
+              <I n="check" s={16} c={C.ink}/>Arrêter le partage
+            </button>
           )}
         </div>
 
@@ -2978,10 +2917,57 @@ const Enlevement = ({go,goBack,userInfo={}}) => {
           ))}
         </div>
 
+        {/* ── Positions reçues des contacts qui ont, eux aussi, activé leur
+               partage GPS (synchronisation automatique en temps réel) ── */}
+        {partagesGps.filter(p=>p.id!==monPartageId.current).length>0&&(
+          <>
+            <div className="sh" style={{marginTop:4}}>
+              <span className="stl">Positions reçues en direct</span>
+            </div>
+            <div style={{padding:"0 20px 8px",display:"flex",flexDirection:"column",gap:10}}>
+              {partagesGps.filter(p=>p.id!==monPartageId.current).map((p,i)=>{
+                const secEcoulees=Math.max(0,Math.round((Date.now()-p.ts)/1000));
+                return (
+                  <div key={p.id} className="si" style={{animationDelay:`${i*60}ms`,background:"#fff",border:"1.5px solid rgba(124,58,237,.2)",borderRadius:16,padding:"14px 16px"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+                      <div style={{width:10,height:10,borderRadius:"50%",background:"#7C3AED",animation:"bk 1.4s ease infinite",flexShrink:0}}/>
+                      <p style={{fontSize:13,fontWeight:800,color:C.ink}}>{p.nom}</p>
+                      <span style={{marginLeft:"auto",fontSize:10,fontWeight:700,color:secEcoulees<30?C.green:C.muted}}>
+                        {secEcoulees<5?"À l'instant":`Il y a ${secEcoulees}s`}
+                      </span>
+                    </div>
+                    <p style={{fontSize:11,color:C.muted,marginBottom:8}}>
+                      Position synchronisée automatiquement · précision ≈ {p.precision}m
+                    </p>
+                    {p.noteVocale&&(
+                      <button
+                        onClick={()=>{
+                          if(!notePlayerRef.current) return;
+                          notePlayerRef.current.src=p.noteVocale.url;
+                          notePlayerRef.current.play().catch(()=>{});
+                        }}
+                        style={{display:"flex",alignItems:"center",gap:6,width:"100%",background:"#FFF7ED",border:"none",borderRadius:10,padding:"8px 10px",cursor:"pointer",fontFamily:"Plus Jakarta Sans",marginBottom:8}}>
+                        <span style={{fontSize:13}}>▶️</span>
+                        <span style={{fontSize:12,fontWeight:700,color:C.orange}}>Écouter la note vocale · {p.noteVocale.duree.toFixed(1)}s</span>
+                      </button>
+                    )}
+                    <a
+                      href={`https://www.google.com/maps?q=${p.lat},${p.lng}`}
+                      target="_blank" rel="noreferrer"
+                      style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,padding:"9px",borderRadius:10,background:"#F5F3FF",color:"#7C3AED",fontSize:12,fontWeight:700,textDecoration:"none",fontFamily:"Plus Jakarta Sans"}}>
+                      <I n="pin" s={14} c="#7C3AED"/> Suivre sur la carte
+                    </a>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+
         <div style={{padding:"8px 20px 20px"}}>
           <div style={{background:"#F5F3FF",border:"1px solid rgba(124,58,237,.2)",borderRadius:14,padding:"12px 14px"}}>
             <p style={{fontSize:12,fontWeight:700,color:"#7C3AED",marginBottom:4}}>ℹ️ Comment ça marche</p>
-            <p style={{fontSize:12,color:C.muted,lineHeight:1.5}}>Votre position se met à jour en continu en arrière-plan, dès que vous êtes connecté(e) — même app fermée. Elle n'est <strong>jamais envoyée</strong> à qui que ce soit automatiquement. Un contact que vous avez ajouté ci-dessous peut la consulter à tout moment, mais uniquement en la recherchant lui-même par votre numéro depuis son propre téléphone.</p>
+            <p style={{fontSize:12,color:C.muted,lineHeight:1.5}}>Une fois activé, le partage GPS envoie automatiquement votre position à vos contacts à chaque déplacement détecté — aucune action de votre part n'est requise. Chez vos contacts, la position affichée se synchronise et s'actualise dès qu'ils ouvrent ou rafraîchissent l'écran.</p>
           </div>
         </div>
       </div>
@@ -3013,1160 +2999,18 @@ const playNotif = () => {
   } catch(e){}
 };
 
-/* Alarme tâche — répétitive urgente */
-/* ── Rappel de tâche : à l'heure indiquée, une alarme sonne EN BOUCLE
-   pendant 45 secondes maximum, et la tâche est LUE À VOIX HAUTE (forte)
-   plusieurs fois. Un bouton permet d'arrêter à tout moment. ── */
-let _rappelInterval=null;
-let _rappelTts=null;
-let _rappelTimeout=null;
-let _rappelCtx=null;
-let _rappelAudio=null;
-function demarrerRappelTache(txt, onFin, audioB64){
-  arreterRappelTache();
-  _rappelCtx=_obtenirCtxAudio();
-  const salve=()=>{
-    const ctx=_rappelCtx;
-    if(!ctx) return;
-    try{ if(ctx.state==="suspended") ctx.resume(); }catch(e){}
-    try{
-      const play=(freq,start,dur)=>{
-        const o=ctx.createOscillator(), g=ctx.createGain();
-        o.connect(g); g.connect(ctx.destination);
-        o.type="square"; o.frequency.value=freq;
-        g.gain.setValueAtTime(0,ctx.currentTime+start);
-        g.gain.linearRampToValueAtTime(0.5,ctx.currentTime+start+0.01);
-        g.gain.linearRampToValueAtTime(0,ctx.currentTime+start+dur);
-        o.start(ctx.currentTime+start); o.stop(ctx.currentTime+start+dur+0.01);
-      };
-      [0,0.35,0.70].forEach(t=>{ play(880,t,0.25); play(1100,t+0.12,0.25); });
-    }catch(e){}
-  };
-  const lire=()=>{
-    try{
-      if(audioB64){
-        /* Note vocale enregistrée par l'utilisateur : on rejoue SA voix. */
-        try{ _rappelAudio&&_rappelAudio.pause(); }catch(e){}
-        _rappelAudio=new Audio(audioB64);
-        _rappelAudio.volume=1;
-        _rappelAudio.play().catch(()=>{});
-      } else if(window.speechSynthesis && txt){
-        /* Sinon : lecture vocale RÉELLE du texte de la tâche, en entier. */
-        window.speechSynthesis.cancel();
-        const u=new SpeechSynthesisUtterance("Rappel de votre tâche : "+txt+". Je répète : "+txt);
-        u.lang="fr-FR"; u.rate=0.9; u.volume=1; u.pitch=1;
-        window.speechSynthesis.speak(u);
-      }
-    }catch(e){}
-  };
-  salve(); setTimeout(lire,1100);
-  let compte=0;
-  _rappelInterval=setInterval(()=>{
-    compte++;
-    salve();
-    if(compte%8===3) lire(); // relit la tâche régulièrement pendant l'alarme
-  }, 1500);
-  try{ navigator.vibrate && navigator.vibrate([400,150,400]); }catch(e){}
-  /* Arrêt automatique après 45 secondes */
-  _rappelTimeout=setTimeout(()=>{ arreterRappelTache(); onFin&&onFin(); }, 45000);
-}
-function arreterRappelTache(){
-  try{ _rappelAudio&&_rappelAudio.pause(); _rappelAudio=null; }catch(e){}
-  try{ clearInterval(_rappelInterval); _rappelInterval=null; }catch(e){}
-  try{ clearTimeout(_rappelTimeout); _rappelTimeout=null; }catch(e){}
-  try{ window.speechSynthesis && window.speechSynthesis.cancel(); }catch(e){}
-  try{ navigator.vibrate && navigator.vibrate(0); }catch(e){}
-  _rappelCtx=null; /* le contexte global reste ouvert pour tous les sons */
-}
-
-
-/* Son notif Alerte Info — doux descendant */
-const playNotifInfo = () => {
-  try {
-    const ctx = _obtenirCtxAudio();
-    if(!ctx) return;
-    try{ if(ctx.state==="suspended") ctx.resume(); }catch(e){}
-    [[523,0,120],[440,130,120],[349,260,180]].forEach(([freq,delay,dur])=>{
-      const o=ctx.createOscillator(), g=ctx.createGain();
-      o.connect(g); g.connect(ctx.destination);
-      o.type="sine"; o.frequency.value=freq;
-      g.gain.setValueAtTime(0,ctx.currentTime+delay/1000);
-      g.gain.linearRampToValueAtTime(0.16,ctx.currentTime+delay/1000+0.01);
-      g.gain.linearRampToValueAtTime(0,ctx.currentTime+(delay+dur)/1000);
-      o.start(ctx.currentTime+delay/1000); o.stop(ctx.currentTime+(delay+dur)/1000);
-    });
-  } catch(e){}
-};
-
-/* ── ÉCRAN AJOUTER UNE TÂCHE ───────────────────────────────────────────────── */
-const AjouterTache = ({go,goBack,onAdd}) => {
-  const [mode,setMode]=useState("ecrit"); // "ecrit" | "vocal"
-  const [txt,setTxt]=useState("");
-  const [heure,setHeure]=useState("08:00");
-  const [vocal,setVocal]=useState(true);
-  const [saved,setSaved]=useState(false);
-  const [ecoute,setEcoute]=useState(false); // micro actif
-  const [errVoix,setErrVoix]=useState("");
-  const recoRef=useRef(null);
-
-  const [audioNote,setAudioNote]=useState(null); // {b64, duree} note vocale enregistrée
-  const [dureeEnreg,setDureeEnreg]=useState(0);
-  const streamVocalRef=useRef(null);
-  const chronoRef=useRef(null);
-  const limiteRef=useRef(null);
-  const dureeEnregRef=useRef(0);
-
-  /* Enregistrement RÉEL de la voix : l'utilisateur parle librement, voit le
-     chrono tourner, et appuie lui-même sur « Valider » pour terminer.
-     Rien ne se coupe tout seul avant 60 secondes. */
-  const startVoice=async()=>{
-    setErrVoix("");
-    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia||!window.MediaRecorder){
-      setErrVoix("Le micro n'est pas disponible sur cet appareil.");
-      return;
-    }
-    let stream;
-    try{
-      stream=await navigator.mediaDevices.getUserMedia({audio:true});
-    }catch(e){
-      setErrVoix("Micro refusé. Autorisez le microphone pour dicter votre tâche.");
-      return;
-    }
-    streamVocalRef.current=stream;
-    let mr;
-    try{ mr=new window.MediaRecorder(stream); }catch(e){
-      setErrVoix("Enregistrement indisponible sur cet appareil.");
-      try{ stream.getTracks().forEach(t=>t.stop()); }catch(_){}
-      return;
-    }
-    const chunks=[];
-    mr.ondataavailable=(e)=>{ if(e.data&&e.data.size>0) chunks.push(e.data); };
-    mr.onstop=()=>{
-      try{ stream.getTracks().forEach(t=>t.stop()); }catch(e){}
-      clearInterval(chronoRef.current); clearTimeout(limiteRef.current);
-      const blob=new Blob(chunks,{type:mr.mimeType||"audio/webm"});
-      const lecteur=new FileReader();
-      lecteur.onload=()=>{
-        setAudioNote({b64:lecteur.result,duree:dureeEnregRef.current});
-        if(!txt.trim()) setTxt(`🎤 Note vocale (${dureeEnregRef.current}s)`);
-      };
-      lecteur.readAsDataURL(blob);
-      setEcoute(false);
-    };
-    recoRef.current=mr;
-    setEcoute(true);
-    setDureeEnreg(0); dureeEnregRef.current=0;
-    chronoRef.current=setInterval(()=>{
-      dureeEnregRef.current+=1;
-      setDureeEnreg(d=>d+1);
-    },1000);
-    /* Filet à 60 s — mais c'est l'utilisateur qui valide quand IL a fini. */
-    limiteRef.current=setTimeout(()=>{ try{ mr.state==="recording"&&mr.stop(); }catch(e){} },60000);
-    try{ mr.start(); }catch(e){
-      setErrVoix("Impossible de démarrer l'enregistrement.");
-      setEcoute(false);
-      try{ stream.getTracks().forEach(t=>t.stop()); }catch(_){}
-    }
-  };
-  const stopVoice=()=>{ // « Valider mon enregistrement »
-    try{ recoRef.current&&recoRef.current.state==="recording"&&recoRef.current.stop(); }catch(e){}
-    setEcoute(false);
-  };
-  const annulerVoice=()=>{
-    try{ clearInterval(chronoRef.current); clearTimeout(limiteRef.current); }catch(e){}
-    try{ recoRef.current&&recoRef.current.state==="recording"&&recoRef.current.stop(); }catch(e){}
-    setTimeout(()=>setAudioNote(null),150);
-    setEcoute(false); setDureeEnreg(0);
-  };
-
-  const handleSave=()=>{
-    if(!txt.trim()&&!audioNote) return;
-    onAdd&&onAdd({txt:txt.trim()||`🎤 Note vocale`,tm:heure,dn:false,audio:audioNote?audioNote.b64:null});
-    setSaved(true);
-    playNotif();
-    setTimeout(()=>go("planning"),900);
-  };
-
-  return (
-    <div className="scr on" style={{display:"flex"}}>
-      <div className="scrl">
-        <div className="scrhdr">
-          <button className="bk" onClick={goBack}><I n="back" s={18} c={C.ink}/></button>
-          <p className="scrttl">Nouvelle tâche</p>
-        </div>
-
-        {saved?(
-          <div style={{margin:"40px 20px",background:C.greenL,border:"1px solid rgba(22,163,74,.3)",borderRadius:20,padding:"32px 20px",textAlign:"center"}}>
-            <div style={{width:56,height:56,borderRadius:"50%",background:C.green,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 14px"}}><I n="check" s={26} c="#fff"/></div>
-            <p style={{fontFamily:"Sora,sans-serif",fontSize:17,fontWeight:800,color:C.ink}}>Tâche enregistrée !</p>
-            <p style={{fontSize:13,color:C.muted,marginTop:8,lineHeight:1.5}}>L'alarme sonnera à <strong>{heure}</strong> avec lecture vocale.</p>
-          </div>
-        ):(
-          <div style={{padding:"0 20px",display:"flex",flexDirection:"column",gap:12}}>
-
-            <p className="fst" style={{paddingTop:4}}>Mode de saisie</p>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-              {[
-                {id:"ecrit",label:"Saisie écrite",icon:"check"},
-                {id:"vocal",label:"Saisie vocale",icon:"mic"},
-              ].map(m=>(
-                <button key={m.id} onClick={()=>{setMode(m.id);setTxt("");setErrVoix("");setEcoute(false);}}
-                  style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,
-                    padding:"13px 10px",borderRadius:14,border:`2px solid ${mode===m.id?C.orange:"rgba(0,0,0,.07)"}`,
-                    background:mode===m.id?C.orangeL:"#fff",cursor:"pointer",
-                    fontFamily:"Plus Jakarta Sans"}}>
-                  <I n={m.icon} s={18} c={mode===m.id?C.orange:C.faint}/>
-                  <span style={{fontSize:13,fontWeight:700,color:mode===m.id?C.orange:C.muted}}>{m.label}</span>
-                </button>
-              ))}
-            </div>
-
-            {mode==="ecrit"&&(
-              <>
-                <p className="fst">Intitulé de la tâche</p>
-                <div className="if" style={{alignItems:"flex-start",paddingTop:12}}>
-                  <I n="check" s={18} c={C.faint}/>
-                  <textarea rows={3} value={txt} onChange={e=>setTxt(e.target.value)}
-                    placeholder="Ex : Appeler client Yopougon, Envoyer catalogue WhatsApp..."/>
-                </div>
-              </>
-            )}
-
-            {mode==="vocal"&&(
-              <>
-                <p className="fst">Dictez votre tâche</p>
-
-                <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:12,padding:"20px 0 8px"}}>
-                  <button onClick={ecoute?stopVoice:startVoice}
-                    style={{width:88,height:88,borderRadius:"50%",border:"none",cursor:"pointer", background:ecoute?"linear-gradient(135deg,#EF4444,#DC2626)":"linear-gradient(135deg,#F97316,#FB923C)", display:"flex",alignItems:"center",justifyContent:"center", boxShadow:ecoute?"0 0 0 8px rgba(239,68,68,.2),0 0 0 16px rgba(239,68,68,.1)":"0 8px 24px rgba(249,115,22,.4)", transition:"all 200ms var(--esp)"}}>
-                    <I n="mic" s={34} c="#fff"/>
-                  </button>
-                  <p style={{fontSize:13,fontWeight:700,color:ecoute?"#EF4444":C.muted,textAlign:"center"}}>
-                    {ecoute?`🔴 Enregistrement… ${dureeEnreg}s — parlez, prenez votre temps`:(audioNote?"Note vocale prête ✓":"Appuyez pour parler")}
-                  </p>
-                  {ecoute&&(
-                    <div style={{display:"flex",gap:8,width:"100%",maxWidth:280}}>
-                      <button onClick={stopVoice}
-                        style={{flex:1,padding:"12px",borderRadius:12,border:"none",cursor:"pointer",
-                          background:C.green,fontFamily:"Plus Jakarta Sans",fontSize:13,fontWeight:800,color:"#fff"}}>
-                        ✓ Valider mon enregistrement
-                      </button>
-                      <button onClick={annulerVoice}
-                        style={{padding:"12px 14px",borderRadius:12,border:`1.5px solid ${C.border}`,cursor:"pointer",
-                          background:"#fff",fontFamily:"Plus Jakarta Sans",fontSize:13,fontWeight:700,color:C.muted}}>
-                        ✕
-                      </button>
-                    </div>
-                  )}
-                  {!ecoute&&audioNote&&(
-                    <button onClick={()=>{try{const a=new Audio(audioNote.b64);a.play();}catch(e){}}}
-                      style={{display:"flex",alignItems:"center",gap:8,padding:"10px 16px",borderRadius:12,
-                        border:`1.5px solid rgba(22,163,74,.35)`,cursor:"pointer",background:C.greenL,
-                        fontFamily:"Plus Jakarta Sans",fontSize:13,fontWeight:700,color:C.green}}>
-                      ▶︎ Réécouter ma note ({audioNote.duree}s)
-                    </button>
-                  )}
-                  {ecoute&&(
-                    <div style={{display:"flex",gap:4,alignItems:"center"}}>
-                      {[0,1,2,3,4].map(i=>(
-                        <div key={i} style={{width:4,borderRadius:2,background:"#EF4444",
-                          height:8+Math.random()*16,
-                          animation:`pulse-bar 0.5s ease ${i*0.1}s infinite alternate`}}/>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {(txt||audioNote)&&!ecoute&&(
-                  <div style={{background:C.greenL,border:"1px solid rgba(22,163,74,.2)",borderRadius:14,padding:"12px 14px"}}>
-                    <p style={{fontSize:11,fontWeight:700,color:C.green,marginBottom:4,textTransform:"uppercase",letterSpacing:".5px"}}>Votre tâche</p>
-                    <p style={{fontSize:14,fontWeight:600,color:C.ink,lineHeight:1.5}}>{txt}</p>
-                    <div style={{display:"flex",gap:8,marginTop:10}}>
-                      <button onClick={handleSave}
-                        style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:6, padding:"10px",borderRadius:10,border:"none",cursor:"pointer", background:C.green,fontFamily:"Plus Jakarta Sans", fontSize:13,fontWeight:700,color:"#fff", boxShadow:"0 4px 14px rgba(22,163,74,.3)"}}>
-                        <I n="check" s={15} c="#fff"/>Enregistrer
-                      </button>
-                      <button onClick={()=>setTxt("")}
-                        style={{padding:"10px 14px",borderRadius:10,border:"none",cursor:"pointer", background:"#FFF1F2",fontFamily:"Plus Jakarta Sans", fontSize:12,fontWeight:700,color:"#DC2626"}}>
-                        ✕ Effacer
-                      </button>
-                    </div>
-                  </div>
-                )}
-                {errVoix&&(
-                  <div style={{background:"#FFF1F2",border:"1px solid rgba(239,68,68,.2)",borderRadius:12,padding:"10px 14px"}}>
-                    <p style={{fontSize:12,color:"#DC2626"}}>{errVoix}</p>
-                  </div>
-                )}
-
-                {txt&&(
-                  <div className="if" style={{alignItems:"flex-start",paddingTop:12}}>
-                    <I n="check" s={18} c={C.faint}/>
-                    <textarea rows={2} value={txt} onChange={e=>setTxt(e.target.value)}
-                      placeholder="Modifier si nécessaire..."/>
-                  </div>
-                )}
-              </>
-            )}
-
-            <p className="fst">Heure de rappel</p>
-            <div className="if">
-              <I n="bell" s={18} c={C.orange}/>
-              <input type="time" value={heure} onChange={e=>setHeure(e.target.value)}
-                style={{flex:1,border:"none",outline:"none",background:"transparent", fontFamily:"'Plus Jakarta Sans',sans-serif",fontSize:18,fontWeight:700,color:C.ink}}/>
-              <span style={{fontSize:11,fontWeight:700,color:C.orange,background:C.orangeL,padding:"3px 10px",borderRadius:20}}>Alarme</span>
-            </div>
-
-            <div style={{background:C.surf,borderRadius:16,padding:"14px 16px",display:"flex",flexDirection:"column",gap:10}}>
-              <p style={{fontSize:12,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".6px"}}>Options d'alarme</p>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                <div style={{display:"flex",alignItems:"center",gap:10}}>
-                  <I n="mic" s={18} c={C.orange}/>
-                  <div>
-                    <p style={{fontSize:13,fontWeight:700,color:C.ink}}>Dictée vocale de la tâche</p>
-                    <p style={{fontSize:11,color:C.muted,marginTop:1}}>L'alarme lit la tâche à voix haute</p>
-                  </div>
-                </div>
-                <button className={`tsw ${vocal?"on":"off"}`} onClick={()=>setVocal(p=>!p)}>
-                  <div className={`tth ${vocal?"on":"off"}`}/>
-                </button>
-              </div>
-              <div style={{display:"flex",alignItems:"center",gap:10,paddingTop:8,borderTop:`1px solid ${C.surfH}`}}>
-                <I n="bell" s={18} c="#8B5CF6"/>
-                <div>
-                  <p style={{fontSize:13,fontWeight:700,color:C.ink}}>Alarme sonore</p>
-                  <p style={{fontSize:11,color:C.muted,marginTop:1}}>Toujours active · Ne peut pas être désactivée</p>
-                </div>
-                <span style={{marginLeft:"auto",fontSize:11,fontWeight:700,color:C.green,background:C.greenL,padding:"3px 10px",borderRadius:20}}>Actif</span>
-              </div>
-            </div>
-
-            <button style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,
-              background:C.surf,border:`1.5px dashed ${C.surfH}`,borderRadius:14,padding:"13px",
-              cursor:"pointer",fontFamily:"Plus Jakarta Sans"}}
-              onMouseOver={e=>{e.currentTarget.style.background=C.orangeL;e.currentTarget.style.borderColor=C.orange}}
-              onMouseOut={e=>{e.currentTarget.style.background=C.surf;e.currentTarget.style.borderColor=C.surfH}}
-              onClick={()=>demarrerRappelTache(txt||"tâche de test")}>
-              <I n="bell" s={18} c={C.orange}/>
-              <span style={{fontSize:13,fontWeight:700,color:C.orange}}>Tester le son de l'alarme</span>
-            </button>
-
-            <div style={{marginTop:4,marginBottom:20}}>
-              <button className="btn btn-p" onClick={handleSave}
-                style={{opacity:txt.trim()?1:.5}} disabled={!txt.trim()}>
-                <I n="check" s={16} c="#fff"/>Enregistrer la tâche
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-      <Nav a="planning" go={go}/>
-    </div>
-  );
-};
-
-const Planning = ({go,goBack}) => {
-  const today = new Date();
-  const todayKey = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
-  const fmtDate = (d) => d.toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"});
-  const fmtDateShort = (k) => {
-    const [y,m,d] = k.split("-");
-    const dt = new Date(+y,+m-1,+d);
-    return dt.toLocaleDateString("fr-FR",{weekday:"short",day:"numeric",month:"short"});
-  };
-  const [journal,setJournal]=useState(()=>{
-    try{
-      const s=window.localStorage.getItem("alerteci_journal_taches");
-      if(s){ const j=JSON.parse(s); if(j&&typeof j==="object") return {[todayKey]:[],...j}; }
-    }catch(e){}
-    return { [todayKey]: [] };
-  });
-  useEffect(()=>{ try{ window.localStorage.setItem("alerteci_journal_taches", JSON.stringify(journal)); }catch(e){} },[journal]);
-
-  const [showAjout,setShowAjout]=useState(false);
-  const [showArchives,setShowArchives]=useState(false);
-  const firedRef=useRef(new Set());
-
-  const taches = journal[todayKey] || [];
-  const done = taches.filter(t=>t.dn).length;
-  const sc = taches.length>0 ? Math.round((done/taches.length)*20) : 0;
-
-  const toggleTache = (i) => setJournal(j=>({
-    ...j,
-    [todayKey]: (j[todayKey]||[]).map((t,idx)=>idx===i?{...t,dn:!t.dn}:t)
-  }));
-
-  const addTache = (t) => setJournal(j=>({
-    ...j,
-    [todayKey]: [...(j[todayKey]||[]), t]
-  }));
-  const archiveDates = Object.keys(journal)
-    .filter(k=>k!==todayKey)
-    .sort((a,b)=>b.localeCompare(a));
-
-  /* Les états d'édition DOIVENT être déclarés avant tout return conditionnel
-     (règle des hooks React) — sinon l'écran d'ajout fait planter le composant. */
-  const [editingIdx,setEditingIdx]=useState(null);
-  const [editTxt,setEditTxt]=useState("");
-
-  if(showAjout) return (
-    <AjouterTache
-      go={(s)=>{setShowAjout(false); if(s!=="planning") go(s);}}
-      goBack={()=>setShowAjout(false)}
-      onAdd={addTache}/>
-  );
-
-  const startEdit=(i)=>{
-    setEditingIdx(i);
-    setEditTxt(taches[i].txt);
-  };
-  const saveEdit=(i)=>{
-    if(!editTxt.trim()) return;
-    setJournal(j=>({...j,[todayKey]:(j[todayKey]||[]).map((t,idx)=>idx===i?{...t,txt:editTxt.trim()}:t)}));
-    setEditingIdx(null);
-    playNotif();
-  };
-  const deleteTache=(i)=>{
-    setJournal(j=>({...j,[todayKey]:(j[todayKey]||[]).filter((_,idx)=>idx!==i)}));
-  };
-
-  return (
-    <div className="scr on" style={{display:"flex"}}>
-      <div className="scrl">
-        <div className="scrhdr">
-          <button className="bk" onClick={goBack}><I n="back" s={18} c={C.ink}/></button>
-          <p className="scrttl">Mon Planning</p>
-        </div>
-
-        <div style={{padding:"0 20px 16px"}}>
-          <div className="arc">
-            <svg width="64" height="64" viewBox="0 0 64 64" style={{flexShrink:0}}>
-              <circle cx="32" cy="32" r="26" fill="none" stroke="#E7E5E4" strokeWidth="6"/>
-              <circle cx="32" cy="32" r="26" fill="none" stroke="#F97316" strokeWidth="6"
-                strokeDasharray={`${taches.length>0?163.4*(done/taches.length):0} 163.4`}
-                strokeLinecap="round" transform="rotate(-90 32 32)"
-                style={{transition:"stroke-dasharray 800ms var(--eo)"}}/>
-              <text x="32" y="37" textAnchor="middle" fontSize="16" fontWeight="800" fill="#1C1917" fontFamily="Sora">{sc}</text>
-            </svg>
-            <div>
-              <p style={{fontFamily:"Sora,sans-serif",fontSize:28,fontWeight:800,color:C.ink,letterSpacing:"-1px"}}>
-                {sc}<span style={{fontSize:14,color:C.muted,fontWeight:600}}>/20</span>
-              </p>
-              <p style={{fontSize:11,fontWeight:600,color:C.muted,marginTop:2}}>
-                Score journalier · {done}/{taches.length} tâche{taches.length>1?"s":""}
-              </p>
-              <div className="ab"><div className="af" style={{width:`${taches.length>0?(done/taches.length)*100:0}%`}}/></div>
-            </div>
-          </div>
-        </div>
-
-        <div className="sh">
-          <span className="stl">Tâches du jour</span>
-          <span style={{fontSize:12,color:C.muted,fontWeight:600,textTransform:"capitalize"}}>{fmtDate(today)}</span>
-        </div>
-        {taches.length===0?(
-          <div style={{margin:"0 20px 8px",background:C.surf,borderRadius:16,padding:"24px 20px",textAlign:"center"}}>
-            <p style={{fontSize:28,marginBottom:8}}>📋</p>
-            <p style={{fontSize:14,fontWeight:700,color:C.ink,marginBottom:4}}>Aucune tâche pour aujourd'hui</p>
-            <p style={{fontSize:12,color:C.muted,lineHeight:1.5}}>Ajoutez votre première tâche du jour</p>
-          </div>
-        ):(
-          <div className="tl">
-            {taches.map((t,i)=>(
-              <div key={i} className="si" style={{animationDelay:`${i*50}ms`,
-                background:"#fff",border:`1px solid ${editingIdx===i?C.orange:C.border}`,
-                borderRadius:16,marginBottom:0,overflow:"hidden"}}>
-                {editingIdx===i?(
-                  /* ── MODE ÉDITION ── */
-                  <div style={{padding:"12px 14px",display:"flex",flexDirection:"column",gap:8}}>
-                    <div className="if" style={{marginBottom:0}}>
-                      <I n="check" s={16} c={C.orange}/>
-                      <input
-                        value={editTxt}
-                        onChange={e=>setEditTxt(e.target.value)}
-                        onKeyDown={e=>{if(e.key==="Enter")saveEdit(i);if(e.key==="Escape")setEditingIdx(null);}}
-                        autoFocus
-                        style={{fontSize:14,fontWeight:600}}
-                      />
-                    </div>
-                    <div style={{display:"flex",gap:8}}>
-                      <button onClick={()=>saveEdit(i)}
-                        style={{flex:1,padding:"8px",borderRadius:10,border:"none",cursor:"pointer", background:C.green,color:"#fff",fontFamily:"Plus Jakarta Sans", fontSize:12,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
-                        <I n="check" s={13} c="#fff"/>Enregistrer
-                      </button>
-                      <button onClick={()=>setEditingIdx(null)}
-                        style={{padding:"8px 14px",borderRadius:10,border:"none",cursor:"pointer", background:C.surf,color:C.muted,fontFamily:"Plus Jakarta Sans", fontSize:12,fontWeight:700}}>
-                        Annuler
-                      </button>
-                    </div>
-                  </div>
-                ):(
-                  /* ── MODE LECTURE ── */
-                  <div style={{display:"flex",alignItems:"center",gap:12,padding:"13px 14px"}}>
-
-                    <button onClick={()=>toggleTache(i)}
-                      style={{width:24,height:24,borderRadius:8,border:`2px solid ${t.dn?C.green:C.surfH}`,
-                        background:t.dn?C.green:"transparent",display:"flex",alignItems:"center",justifyContent:"center",
-                        cursor:"pointer",flexShrink:0,padding:0}}>
-                      {t.dn&&<I n="check" s={14} c="#fff"/>}
-                    </button>
-
-                    <span style={{fontSize:14,fontWeight:600,flex:1, color:t.dn?C.faint:C.ink, textDecoration:t.dn?"line-through":"none"}}>
-                      {t.txt}
-                    </span>
-
-                    <button onClick={()=>{
-                        /* Lecture immédiate de la tâche : la note vocale de
-                           l'utilisateur si elle existe, sinon lecture du texte. */
-                        try{
-                          if(t.audio){ const a=new Audio(t.audio); a.volume=1; a.play().catch(()=>{}); }
-                          else if(window.speechSynthesis){
-                            window.speechSynthesis.cancel();
-                            const u=new SpeechSynthesisUtterance(t.txt);
-                            u.lang="fr-FR"; u.rate=0.9; u.volume=1;
-                            window.speechSynthesis.speak(u);
-                          }
-                        }catch(e){}
-                      }}
-                      style={{width:30,height:30,borderRadius:10,border:"none",cursor:"pointer",
-                        background:C.orangeL,display:"flex",alignItems:"center",justifyContent:"center",
-                        fontSize:14,flexShrink:0,padding:0}}>
-                      🔊
-                    </button>
-
-                    <span style={{fontSize:11,fontWeight:700,color:C.orange,background:C.orangeL, padding:"3px 8px",borderRadius:8,flexShrink:0}}>
-                      {t.tm}
-                    </span>
-                    {!t.dn&&<I n="bell" s={12} c={C.orange}/>}
-
-                    <div style={{display:"flex",gap:4,flexShrink:0}}>
-                      <button
-                        onClick={e=>{e.stopPropagation();startEdit(i);}}
-                        style={{width:28,height:28,borderRadius:8,border:"none",cursor:"pointer", background:C.orangeL,display:"flex",alignItems:"center",justifyContent:"center", transition:"transform 140ms ease",flexShrink:0}}
-                        onMouseOver={e=>e.currentTarget.style.transform="scale(1.1)"}
-                        onMouseOut={e=>e.currentTarget.style.transform="scale(1)"}>
-                        <span style={{fontSize:13}}>✏️</span>
-                      </button>
-                      <button
-                        onClick={e=>{e.stopPropagation();deleteTache(i);}}
-                        style={{width:28,height:28,borderRadius:8,border:"none",cursor:"pointer", background:"#FFF1F2",display:"flex",alignItems:"center",justifyContent:"center", transition:"transform 140ms ease",flexShrink:0}}
-                        onMouseOver={e=>e.currentTarget.style.transform="scale(1.1)"}
-                        onMouseOut={e=>e.currentTarget.style.transform="scale(1)"}>
-                        <span style={{fontSize:13}}>🗑️</span>
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-        <button className="atb" onClick={()=>setShowAjout(true)}>
-          <I n="plus" s={18} c={C.muted}/>Ajouter une tâche
-        </button>
-
-        {archiveDates.length>0&&(
-          <div style={{padding:"16px 20px 0"}}>
-            <button
-              onClick={()=>setShowArchives(p=>!p)}
-              style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",background:C.surf,border:`1px solid ${C.border}`,borderRadius:14,padding:"12px 16px",cursor:"pointer",fontFamily:"Plus Jakarta Sans"}}>
-              <div style={{display:"flex",alignItems:"center",gap:8}}>
-                <span style={{fontSize:16}}>🗂️</span>
-                <span style={{fontSize:13,fontWeight:700,color:C.ink}}>Archives</span>
-                <span style={{fontSize:11,fontWeight:700,color:C.faint,background:C.surfH,padding:"2px 8px",borderRadius:20}}>
-                  {archiveDates.length} jour{archiveDates.length>1?"s":""}
-                </span>
-              </div>
-              <span style={{fontSize:11,color:C.orange,fontWeight:700,transform:showArchives?"rotate(180deg)":"rotate(0)",display:"inline-block"}}>▼</span>
-            </button>
-
-            {showArchives&&(
-              <div style={{marginTop:8,display:"flex",flexDirection:"column",gap:10,animation:"stin 250ms var(--eo)"}}>
-                {archiveDates.map((dk,di)=>{
-                  const dayTaches = journal[dk]||[];
-                  const dayDone = dayTaches.filter(t=>t.dn).length;
-                  const dayScore = dayTaches.length>0?Math.round((dayDone/dayTaches.length)*20):0;
-                  return (
-                    <div key={di} style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:16,overflow:"hidden"}}>
-
-                      <div style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",background:C.surf,borderBottom:`1px solid ${C.border}`}}>
-                        <div style={{width:32,height:32,borderRadius:10,background:dayScore>=15?C.greenL:dayScore>=10?C.orangeL:"#FFF1F2",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                          <span style={{fontSize:12,fontWeight:800,color:dayScore>=15?C.green:dayScore>=10?C.orange:"#DC2626"}}>{dayScore}</span>
-                        </div>
-                        <div style={{flex:1}}>
-                          <p style={{fontSize:13,fontWeight:700,color:C.ink,textTransform:"capitalize"}}>{fmtDateShort(dk)}</p>
-                          <p style={{fontSize:11,color:C.muted,marginTop:1}}>{dayDone}/{dayTaches.length} tâche{dayTaches.length>1?"s":""} · Score {dayScore}/20</p>
-                        </div>
-                        <span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:20, background:dayDone===dayTaches.length?C.greenL:"#FFF7ED", color:dayDone===dayTaches.length?C.green:C.orange}}>
-                          {dayDone===dayTaches.length?"✓ Complété":"Partiel"}
-                        </span>
-                      </div>
-
-                      <div style={{display:"flex",flexDirection:"column",gap:0}}>
-                        {dayTaches.map((t,ti)=>(
-                          <div key={ti} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 16px",borderBottom:ti<dayTaches.length-1?`1px solid ${C.border}`:"none",opacity:0.85}}>
-                            <div style={{width:18,height:18,borderRadius:5,background:t.dn?C.green:C.surfH,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                              {t.dn&&<I n="check" s={11} c="#fff"/>}
-                            </div>
-                            <span style={{fontSize:12,color:t.dn?C.muted:C.ink,flex:1,textDecoration:t.dn?"line-through":"none"}}>{t.txt}</span>
-                            <span style={{fontSize:10,fontWeight:600,color:C.faint,background:C.surf,padding:"2px 7px",borderRadius:8}}>{t.tm}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
-        <div style={{height:20}}/>
-      </div>
-      <Nav a="planning" go={go}/>
-    </div>
-  );
-};
-
-/* ── LISTE CLIENTS D'UNE COMMUNE ─────────────────────────────────────────── */
-const Info = ({go,goBack,plan="gratuit",alertesPubliques=[]}) => {
-  const alertesTriees = [...alertesPubliques].sort((a,b)=>b.ts-a.ts);
-  useEffect(()=>{
-    if(alertesTriees.some(a=>a.urgent)) playNotifInfo();
-  },[]);
-  return (
-  <div className="scr on" style={{display:"flex"}}>
-    <div className="scrl">
-      <div className="scrhdr">
-        <button className="bk" onClick={goBack}><I n="back" s={18} c={C.ink}/></button>
-        <p className="scrttl">Alertes Info</p>
-        <span className="bg" style={{marginLeft:"auto", background:plan==="premium"?C.orange+"18":C.green+"18", color:plan==="premium"?C.orange:C.green}}>
-          {plan==="premium"?"PREMIUM":"GRATUIT"}
-        </span>
-      </div>
-      <div className="inf">
-        <button className="ic mt si" style={{animationDelay:"0ms"}} onClick={()=>{playNotifInfo();}}>
-          <div className="icr">
-            <div className="ici" style={{background:"rgba(59,130,246,.15)"}}><I n="cloud" s={22} c="#2563EB"/></div>
-            <div><p style={{fontSize:15,fontWeight:700,color:"#1D4ED8"}}>Alerte Météo</p><p style={{fontSize:11,fontWeight:600,color:"rgba(29,78,216,.6)",marginTop:2}}>Partenaire : SODEXAM</p></div>
-          </div>
-          <p style={{fontSize:12,color:"rgba(29,78,216,.7)",lineHeight:1.5,marginBottom:10}}>Recevez les alertes météo en temps réel avec lecture vocale et codes couleurs d'urgence pour les fortes pluies.</p>
-          <div style={{display:"flex",alignItems:"center",gap:8}}>
-            <span style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700,padding:"5px 12px",borderRadius:20,background:"rgba(59,130,246,.1)",color:"#2563EB"}}>
-              <I n="bell" s={12} c="#2563EB"/> Notifications actives
-            </span>
-            <span style={{fontSize:10,color:"rgba(29,78,216,.5)"}}>· Toucher pour simuler une notif</span>
-          </div>
-        </button>
-        <button className="ic ef si" style={{animationDelay:"80ms"}} onClick={()=>go("effondrement")}>
-          <div className="icr">
-            <div className="ici" style={{background:"rgba(249,115,22,.15)"}}><I n="building" s={22} c="#C2410C"/></div>
-            <div><p style={{fontSize:15,fontWeight:700,color:"#C2410C"}}>Alerte Effondrement</p><p style={{fontSize:11,fontWeight:600,color:"rgba(194,65,12,.6)",marginTop:2}}>Partenaire : Min. Construction</p></div>
-          </div>
-          <p style={{fontSize:12,color:"rgba(194,65,12,.7)",lineHeight:1.5,marginBottom:10}}>Signalez un bâtiment dangereux avec texte, photo, vidéo et localisation GPS obligatoire. Transmis directement au Ministère.</p>
-          <span style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700,padding:"5px 12px",borderRadius:20,background:"rgba(249,115,22,.1)",color:"#C2410C"}}>
-            <I n="alert" s={12} c="#C2410C"/> Signaler un danger →
-          </span>
-        </button>
-        <button className="ic in si" style={{animationDelay:"160ms"}} onClick={()=>go("incendie")}>
-          <div className="icr">
-            <div className="ici" style={{background:"rgba(220,38,38,.15)"}}><I n="fire" s={22} c="#BE123C"/></div>
-            <div><p style={{fontSize:15,fontWeight:700,color:"#BE123C"}}>Incendie & Danger</p><p style={{fontSize:11,fontWeight:600,color:"rgba(190,18,60,.6)",marginTop:2}}>Partenaire : Pompiers CI</p></div>
-          </div>
-          <p style={{fontSize:12,color:"rgba(190,18,60,.7)",lineHeight:1.5,marginBottom:10}}>Alertez les pompiers en cas d'incendie ou d'inondation. Envoyez vidéo et localisation GPS en urgence.</p>
-          <span style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700,padding:"5px 12px",borderRadius:20,background:"rgba(220,38,38,.1)",color:"#BE123C"}}>
-            <I n="phone" s={12} c="#BE123C"/> Envoyer une alerte →
-          </span>
-        </button>
-
-        {/* ── Un écran "recevoir + donner des infos" par service public,
-               sur le modèle Effondrement/Ministère de la Construction.
-               SODEXAM garde son écran météo dédié ci-dessus, inchangé. ── */}
-        {SERVICES_PUBLICS_CONFIG.map((s,i)=>(
-          <button key={s.sc} className="ic si" style={{animationDelay:`${240+i*60}ms`}} onClick={()=>go(s.sc)}>
-            <div className="icr">
-              <div className="ici" style={{background:s.bg}}><I n={s.ic} s={22} c={s.c}/></div>
-              <div><p style={{fontSize:15,fontWeight:700,color:s.c}}>{s.nom}</p><p style={{fontSize:11,fontWeight:600,color:s.c+"99",marginTop:2}}>Recevoir et donner des infos</p></div>
-            </div>
-            <p style={{fontSize:12,color:s.c+"B3",lineHeight:1.5,marginBottom:10}}>{s.desc}</p>
-            <span style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700,padding:"5px 12px",borderRadius:20,background:s.bg,color:s.c}}>
-              <I n="arrow" s={12} c={s.c}/> Ouvrir →
-            </span>
-          </button>
-        ))}
-      </div>
-
-      <div className="sh" style={{marginTop:4}}>
-        <span className="stl">Dernières alertes</span>
-        {alertesTriees.filter(a=>a.urgent).length>0&&(
-          <span style={{fontSize:10,fontWeight:800,color:"#fff",background:"#EF4444",padding:"3px 10px",borderRadius:20,animation:"bk 2s ease infinite"}}>
-            {alertesTriees.filter(a=>a.urgent).length} urgent{alertesTriees.filter(a=>a.urgent).length>1?"s":""}
-          </span>
-        )}
-      </div>
-      {/* Liste des dernières alertes masquée à la demande — alertesTriees,
-          la diffusion service public, l'expiration 24h et le useEffect de
-          notification restent pleinement fonctionnels en arrière-plan.
-      <div style={{padding:"0 20px",display:"flex",flexDirection:"column",gap:10,marginBottom:20}}>
-        {alertesTriees.length===0&&(
-          <div style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:16,padding:"24px 16px",textAlign:"center"}}>
-            <p style={{fontSize:12,color:C.faint}}>Aucune alerte active pour le moment. Les alertes expirent automatiquement après 24h.</p>
-          </div>
-        )}
-        {alertesTriees.map((a,i)=>(
-          <button key={a.id} className="si"
-            style={{animationDelay:`${i*60}ms`,
-              display:"flex",alignItems:"flex-start",gap:12,
-              background:"#fff",border:`1.5px solid ${a.urgent?a.c+"44":C.border}`,
-              borderRadius:16,padding:"14px",cursor:"pointer",
-              fontFamily:"Plus Jakarta Sans",textAlign:"left",
-              position:"relative",overflow:"hidden"}}
-            onClick={()=>{playNotifInfo();go(a.cible||"info");}}>
-            {a.urgent&&<div style={{position:"absolute",left:0,top:0,bottom:0,width:4,background:a.c,borderRadius:"16px 0 0 16px"}}/>}
-            <div style={{width:40,height:40,borderRadius:12,background:a.bg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0,marginLeft:a.urgent?4:0}}>
-              {a.icon}
-            </div>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3,flexWrap:"wrap"}}>
-                <span style={{fontSize:10,fontWeight:800,color:a.c,background:a.bg,padding:"2px 8px",borderRadius:20}}>{a.service}</span>
-                {a.urgent&&<span style={{fontSize:9,fontWeight:800,color:"#fff",background:a.c,padding:"2px 6px",borderRadius:20}}>URGENT</span>}
-                <span style={{fontSize:10,color:C.faint,marginLeft:"auto"}}>{formatHeureRelative(a.ts)}</span>
-              </div>
-              <p style={{fontSize:13,fontWeight:800,color:C.ink,marginBottom:3,lineHeight:1.3}}>{a.titre}</p>
-              <p style={{fontSize:11,color:C.muted,lineHeight:1.5,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{a.apercu}</p>
-            </div>
-            <I n="arrow" s={13} c={C.faint} style={{flexShrink:0,marginTop:4}}/>
-          </button>
-        ))}
-      </div>
-      */}
-    </div>
-    <Nav a="info" go={go}/>
-  </div>
-  );
-};
-
-/* ── ÉCRAN GÉNÉRIQUE "SERVICE PUBLIC" (recevoir + donner des infos) ─────────
-   Réutilisé pour chaque type de service (sauf SODEXAM) : sur le modèle de
-   l'écran Effondrement existant pour le Ministère de la Construction, avec
-   en plus la réception en direct des informations diffusées par CE service
-   précis (filtrage de alertesPubliques par nom de service). ── */
-const ServicePublicEcran = ({go,goBack,config,alertesPubliques=[],ajouterAlertePublique}) => {
-  const [tab,setTab]=useState("recevoir"); // "recevoir" | "envoyer"
-  const [sent,setSent]=useState(false);
-  const [desc,setDesc]=useState("");
-  const [adresse,setAdresse]=useState("");
-  const [medias,setMedias]=useState([]);
-  const [gps,setGps]=useState(null);
-  const [gpsLoad,setGpsLoad]=useState(false);
-  const photoRef=useRef(null);
-  const videoRef=useRef(null);
-
-  const mesAlertes = [...alertesPubliques].filter(a=>a.service===config.nom).sort((a,b)=>b.ts-a.ts);
-
-  useEffect(()=>{
-    if(navigator.geolocation){
-      setGpsLoad(true);
-      navigator.geolocation.getCurrentPosition(
-        pos=>{setGps({lat:pos.coords.latitude.toFixed(4),lng:pos.coords.longitude.toFixed(4)});setGpsLoad(false);},
-        ()=>{setGpsLoad(false);},
-        {timeout:10000,enableHighAccuracy:true}
-      );
-    }
-  },[]);
-
-  const addMedia=(files,type)=>{
-    if(!files||!files.length) return;
-    const arr=Array.from(files).map(f=>({nom:f.nom||f.name,type}));
-    setMedias(p=>[...p,...arr]);
-    playNotif();
-  };
-
-  return (
-    <div className="scr on" style={{display:"flex"}}>
-      <div className="scrl">
-        <div className="scrhdr">
-          <button className="bk" onClick={goBack}><I n="back" s={18} c={C.ink}/></button>
-          <p className="scrttl">{config.nom}</p>
-        </div>
-
-        <div style={{margin:"0 20px 14px",background:config.grad,borderRadius:22,padding:"18px 20px"}}>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
-            <div style={{width:40,height:40,borderRadius:12,background:"rgba(255,255,255,.15)",display:"flex",alignItems:"center",justifyContent:"center"}}><I n={config.ic} s={20} c="#fff"/></div>
-            <div>
-              <p style={{fontSize:14,fontWeight:800,color:"#fff",fontFamily:"Sora"}}>{config.nom}</p>
-              <p style={{fontSize:11,color:"rgba(255,255,255,.6)"}}>Recevoir et donner des informations</p>
-            </div>
-          </div>
-          <p style={{fontSize:12,color:"rgba(255,255,255,.7)",lineHeight:1.5}}>{config.desc}</p>
-        </div>
-
-        <div style={{padding:"0 20px 14px",display:"flex",gap:8}}>
-          {[{id:"recevoir",lb:"Infos reçues"},{id:"envoyer",lb:"Signaler"}].map(t=>(
-            <button key={t.id} onClick={()=>{setTab(t.id);setSent(false);}}
-              style={{flex:1,padding:"10px 6px",borderRadius:12,border:t.id===tab?"none":`1px solid ${C.border}`,cursor:"pointer",fontFamily:"Plus Jakarta Sans",fontSize:12,fontWeight:700,background:tab===t.id?config.c:"#fff",color:tab===t.id?"#fff":C.muted,boxShadow:tab===t.id?`0 4px 14px ${config.c}40`:"none"}}>
-              {t.lb}
-            </button>
-          ))}
-        </div>
-
-        {tab==="recevoir"&&(
-          <div style={{padding:"0 20px",display:"flex",flexDirection:"column",gap:10,marginBottom:20}}>
-            {mesAlertes.length===0&&(
-              <div style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:16,padding:"28px 20px",textAlign:"center"}}>
-                <p style={{fontSize:28,marginBottom:8}}>📭</p>
-                <p style={{fontSize:13,fontWeight:700,color:C.ink,marginBottom:4}}>Aucune information pour le moment</p>
-                <p style={{fontSize:12,color:C.muted,lineHeight:1.5}}>Les informations diffusées par {config.nom} apparaîtront ici et resteront visibles 24h.</p>
-              </div>
-            )}
-            {mesAlertes.map((a,i)=>(
-              <div key={a.id} className="si" style={{animationDelay:`${i*60}ms`,background:"#fff",border:`1.5px solid ${a.urgent?config.c+"55":C.border}`,borderRadius:16,padding:"14px",position:"relative",overflow:"hidden"}}>
-                {a.urgent&&<div style={{position:"absolute",left:0,top:0,bottom:0,width:4,background:config.c}}/>}
-                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8,marginLeft:a.urgent?6:0}}>
-                  <div style={{width:36,height:36,borderRadius:12,background:config.bg,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:16}}>{a.icon}</div>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                      <p style={{fontSize:12,fontWeight:800,color:config.c}}>{a.citoyen?"Signalement d'un citoyen":(a.institution||config.nom)}</p>
-                      {a.citoyen&&<span style={{fontSize:9,fontWeight:700,color:C.muted,background:C.surf,padding:"2px 7px",borderRadius:20}}>COMMUNAUTÉ</span>}
-                      {a.urgent&&<span style={{fontSize:9,fontWeight:800,color:"#fff",background:config.c,padding:"2px 7px",borderRadius:20}}>URGENT</span>}
-                    </div>
-                    <p style={{fontSize:11,color:C.muted,marginTop:1}}>{formatHeureRelative(a.ts)}</p>
-                  </div>
-                </div>
-                <p style={{fontSize:13,fontWeight:600,color:C.ink,lineHeight:1.5,marginLeft:a.urgent?6:0,marginBottom:4}}>{a.apercu}</p>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {tab==="envoyer"&&(
-          sent?(
-            <div style={{margin:"0 20px 20px",background:C.greenL,border:"1px solid rgba(22,163,74,.3)",borderRadius:20,padding:"28px 20px",textAlign:"center"}}>
-              <div style={{width:60,height:60,borderRadius:"50%",background:C.green,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px"}}><I n="check" s={28} c="#fff"/></div>
-              <p style={{fontSize:18,fontWeight:800,color:C.ink,fontFamily:"Sora"}}>Signalement envoyé</p>
-              <p style={{fontSize:13,color:C.muted,marginTop:8,lineHeight:1.5}}>Votre signalement a été transmis à {config.nom}.</p>
-              {gps&&<p style={{fontSize:11,color:C.faint,marginTop:6}}>📍 GPS : {gps.lat}° N, {gps.lng}° W</p>}
-              <button className="btn btn-g" style={{marginTop:20}} onClick={()=>{setSent(false);setDesc("");setAdresse("");setMedias([]);}}>Nouveau signalement</button>
-            </div>
-          ):(
-            <div className="rpt">
-              <p className="fst" style={{paddingTop:4}}>Description de la situation</p>
-              <div className="if" style={{alignItems:"flex-start",paddingTop:12}}>
-                <I n="alert" s={18} c={C.faint}/>
-                <textarea rows={3} value={desc} onChange={e=>setDesc(e.target.value)} placeholder="Décrivez la situation à signaler..."/>
-              </div>
-              <div className="if"><I n="pin" s={18} c={C.faint}/><input value={adresse} onChange={e=>setAdresse(e.target.value)} placeholder="Adresse ou description du lieu"/></div>
-
-              <p className="fst">Photos / Vidéos</p>
-              <div className="mu">
-                <button className="mb" onClick={()=>photoRef.current&&photoRef.current.click()}>
-                  <I n="camera" s={22} c={config.c}/><span>Photo</span>
-                </button>
-                <button className="mb" onClick={()=>videoRef.current&&videoRef.current.click()}>
-                  <I n="video" s={22} c={config.c}/><span>Vidéo</span>
-                </button>
-              </div>
-              <input ref={photoRef} type="file" accept="image/*" multiple style={{display:"none"}} onChange={e=>addMedia(e.target.files,"photo")}/>
-              <input ref={videoRef} type="file" accept="video/*" style={{display:"none"}} onChange={e=>addMedia(e.target.files,"vidéo")}/>
-              {medias.length>0&&(
-                <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:4}}>
-                  {medias.map((m,i)=>(
-                    <div key={i} style={{display:"flex",alignItems:"center",gap:4,background:m.type==="photo"?C.orangeL:C.greenL,borderRadius:20,padding:"4px 10px"}}>
-                      <I n={m.type==="photo"?"camera":"video"} s={12} c={m.type==="photo"?C.orange:C.green}/>
-                      <span style={{fontSize:10,fontWeight:700,color:m.type==="photo"?C.orange:C.green}}>{m.nom.slice(0,14)}</span>
-                      <button onClick={()=>setMedias(p=>p.filter((_,j)=>j!==i))} style={{background:"none",border:"none",cursor:"pointer",fontSize:10,color:C.faint,lineHeight:1}}>✕</button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <p className="fst">Localisation GPS</p>
-              <div className="lb">
-                <I n="pin" s={18} c={config.c}/>
-                <div>
-                  <p style={{fontSize:12,fontWeight:600,color:config.c}}>{gpsLoad?"Détection en cours...":gps?"Position détectée automatiquement":"Position non disponible"}</p>
-                  {gps&&<p style={{fontSize:11,color:C.faint,marginTop:2}}>{gps.lat}° N, {gps.lng}° W</p>}
-                </div>
-                <span style={{fontSize:11,fontWeight:700,color:config.c,background:config.bg,padding:"3px 8px",borderRadius:20,marginLeft:"auto"}}>Recommandé</span>
-              </div>
-              <button className="btn btn-p" style={{background:config.c,marginTop:6,marginBottom:20,opacity:!desc.trim()?0.5:1}} disabled={!desc.trim()} onClick={()=>{
-                setSent(true);
-                playNotif();
-                /* Le signalement citoyen est aussi diffusé aux autres utilisateurs
-                   de la sous-rubrique, comme une information communautaire en
-                   temps réel — clairement distingué d'une diffusion officielle. */
-                ajouterAlertePublique && ajouterAlertePublique({
-                  urgent:false,
-                  c:config.c, bg:config.bg, icon:"👤",
-                  service:config.nom, cible:config.sc,
-                  citoyen:true,
-                  titre:"Signalement d'un citoyen",
-                  apercu:desc.trim()+(adresse.trim()?` (${adresse.trim()})`:""),
-                });
-              }}>
-                <I n="send" s={16} c="#fff"/>Envoyer à {config.nom}
-              </button>
-            </div>
-          )
-        )}
-      </div>
-      <Nav a="info" go={go}/>
-    </div>
-  );
-};
-
-const Effondrement = ({go,goBack}) => {
-  const [sent,setSent]=useState(false);
-  const [desc,setDesc]=useState("");
-  const [adresse,setAdresse]=useState("");
-  const [medias,setMedias]=useState([]);
-  const [gps,setGps]=useState(null);
-  const [gpsLoad,setGpsLoad]=useState(false);
-  const photoRef=useRef(null);
-  const videoRef=useRef(null);
-
-  useEffect(()=>{
-    if(navigator.geolocation){
-      setGpsLoad(true);
-      navigator.geolocation.getCurrentPosition(
-        pos=>{setGps({lat:pos.coords.latitude.toFixed(4),lng:pos.coords.longitude.toFixed(4)});setGpsLoad(false);},
-        ()=>{setGpsLoad(false);}, /* GPS refusé → null, pas de fausse position */
-        {timeout:10000,enableHighAccuracy:true}
-      );
-    }
-  },[]);
-
-  const addMedia=(files,type)=>{
-    if(!files||!files.length) return;
-    const arr=Array.from(files).map(f=>({nom:f.nom||f.name,type}));
-    setMedias(p=>[...p,...arr]);
-    playNotif();
-  };
-
-  return (
-    <div className="scr on" style={{display:"flex"}}>
-      <div className="scrl">
-        <div className="scrhdr">
-          <button className="bk" onClick={goBack}><I n="back" s={18} c={C.ink}/></button>
-          <p className="scrttl">Alerte Effondrement</p>
-        </div>
-        <div style={{margin:"0 20px 16px",background:"linear-gradient(145deg,#7C2D12,#C2410C)",borderRadius:22,padding:"18px 20px"}}>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
-            <div style={{width:40,height:40,borderRadius:12,background:"rgba(255,255,255,.15)",display:"flex",alignItems:"center",justifyContent:"center"}}><I n="building" s={20} c="#fff"/></div>
-            <div>
-              <p style={{fontSize:14,fontWeight:800,color:"#fff",fontFamily:"Sora"}}>Ministère de la Construction</p>
-              <p style={{fontSize:11,color:"rgba(255,255,255,.6)"}}>Signalement direct · Gratuit</p>
-            </div>
-          </div>
-          <p style={{fontSize:12,color:"rgba(255,255,255,.7)",lineHeight:1.5}}>Votre signalement sera transmis directement dans la messagerie du Ministère pour une prise en charge rapide.</p>
-        </div>
-        {sent?(
-          <div style={{margin:"20px",background:C.greenL,border:"1px solid rgba(22,163,74,.3)",borderRadius:20,padding:"28px 20px",textAlign:"center"}}>
-            <div style={{width:60,height:60,borderRadius:"50%",background:C.green,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px"}}><I n="check" s={28} c="#fff"/></div>
-            <p style={{fontSize:18,fontWeight:800,color:C.ink,fontFamily:"Sora"}}>Signalement envoyé</p>
-            <p style={{fontSize:13,color:C.muted,marginTop:8,lineHeight:1.5}}>Votre alerte a été transmise au Ministère de la Construction. Réf : #EFF-2406-0047</p>
-            {gps&&<p style={{fontSize:11,color:C.faint,marginTop:6}}>📍 GPS : {gps.lat}° N, {gps.lng}° W</p>}
-            <button className="btn btn-g" style={{marginTop:20}} onClick={()=>{setSent(false);go("info");}}>Retour aux alertes</button>
-          </div>
-        ):(
-          <div className="rpt">
-            <p className="fst" style={{paddingTop:4}}>Description du danger</p>
-            <div className="if" style={{alignItems:"flex-start",paddingTop:12}}>
-              <I n="alert" s={18} c={C.faint}/>
-              <textarea rows={3} value={desc} onChange={e=>setDesc(e.target.value)} placeholder="Décrivez le danger : type de bâtiment, fissures visibles, nombre de personnes à risque..."/>
-            </div>
-            <div className="if"><I n="building" s={18} c={C.faint}/><input value={adresse} onChange={e=>setAdresse(e.target.value)} placeholder="Adresse ou description du lieu"/></div>
-
-            <p className="fst">Photos / Vidéos</p>
-            <div className="mu">
-              <button className="mb" onClick={()=>photoRef.current&&photoRef.current.click()}>
-                <I n="camera" s={22} c={C.orange}/><span>Photo</span>
-              </button>
-              <button className="mb" onClick={()=>videoRef.current&&videoRef.current.click()}>
-                <I n="video" s={22} c={C.orange}/><span>Vidéo</span>
-              </button>
-            </div>
-            <input ref={photoRef} type="file" accept="image/*" multiple style={{display:"none"}} onChange={e=>addMedia(e.target.files,"photo")}/>
-            <input ref={videoRef} type="file" accept="video/*" style={{display:"none"}} onChange={e=>addMedia(e.target.files,"vidéo")}/>
-            {medias.length>0&&(
-              <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:4}}>
-                {medias.map((m,i)=>(
-                  <div key={i} style={{display:"flex",alignItems:"center",gap:4,background:m.type==="photo"?C.orangeL:C.greenL,borderRadius:20,padding:"4px 10px"}}>
-                    <I n={m.type==="photo"?"camera":"video"} s={12} c={m.type==="photo"?C.orange:C.green}/>
-                    <span style={{fontSize:10,fontWeight:700,color:m.type==="photo"?C.orange:C.green}}>{m.nom.slice(0,14)}</span>
-                    <button onClick={()=>setMedias(p=>p.filter((_,j)=>j!==i))} style={{background:"none",border:"none",cursor:"pointer",fontSize:10,color:C.faint,lineHeight:1}}>✕</button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <p className="fst">Localisation GPS</p>
-            <div className="lb">
-              <I n="pin" s={18} c={C.green}/>
-              <div>
-                <p style={{fontSize:12,fontWeight:600,color:C.green}}>{gpsLoad?"Détection en cours...":"Position détectée automatiquement"}</p>
-                {gps&&<p style={{fontSize:11,color:C.faint,marginTop:2}}>{gps.lat}° N, {gps.lng}° W</p>}
-              </div>
-              <span style={{fontSize:11,fontWeight:700,color:C.green,background:"rgba(22,163,74,.1)",padding:"3px 8px",borderRadius:20,marginLeft:"auto"}}>Requis</span>
-            </div>
-            <button className="btn btn-p" style={{background:"#C2410C",marginTop:6,marginBottom:20,opacity:(!desc.trim()||!gps)?0.5:1}} disabled={!desc.trim()||!gps} onClick={()=>{setSent(true);playNotif();}}>
-              <I n="send" s={16} c="#fff"/>Envoyer au Ministère
-            </button>
-          </div>
-        )}
-      </div>
-      <Nav a="info" go={go}/>
-    </div>
-  );
-};
-
-const Incendie = ({go,goBack}) => {
-  const [sent,setSent]=useState(false);
-  const [typeUrgence,setTypeUrgence]=useState(null);
-  const [medias,setMedias]=useState([]);
-  const [gps,setGps]=useState(null);
-  const [gpsLoad,setGpsLoad]=useState(false);
-  const videoRef=useRef(null);
-  const galerieRef=useRef(null);
-
-  useEffect(()=>{
-    if(navigator.geolocation){
-      setGpsLoad(true);
-      navigator.geolocation.getCurrentPosition(
-        pos=>{setGps({lat:pos.coords.latitude.toFixed(4),lng:pos.coords.longitude.toFixed(4)});setGpsLoad(false);},
-        ()=>{setGpsLoad(false);}, /* GPS refusé → null, pas de fausse position */
-        {timeout:10000,enableHighAccuracy:true}
-      );
-    }
-  },[]);
-
-  const addMedia=(files,type)=>{
-    if(!files||!files.length) return;
-    const arr=Array.from(files).map(f=>({nom:f.nom||f.name,type}));
-    setMedias(p=>[...p,...arr]);
-    playNotif();
-  };
-
-  const types=[
-    {lb:"Incendie",ic:"fire",c:"#BE123C",bg:"#FFF1F2"},
-    {lb:"Inondation",ic:"cloud",c:"#2563EB",bg:"#EFF6FF"},
-    {lb:"Personne bloquée",ic:"alert",c:"#D97706",bg:"#FFFBEB"},
-    {lb:"Explosion",ic:"alert",c:"#7C3AED",bg:"#F5F3FF"},
-  ];
-
-  return (
-    <div className="scr on" style={{display:"flex"}}>
-      <div className="scrl">
-        <div className="scrhdr">
-          <button className="bk" onClick={goBack}><I n="back" s={18} c={C.ink}/></button>
-          <p className="scrttl">Incendie & Danger</p>
-        </div>
-        <div style={{margin:"0 20px 16px",background:"linear-gradient(145deg,#881337,#BE123C)",borderRadius:22,padding:"18px 20px"}}>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
-            <div style={{width:40,height:40,borderRadius:12,background:"rgba(255,255,255,.15)",display:"flex",alignItems:"center",justifyContent:"center"}}><I n="fire" s={20} c="#fff"/></div>
-            <div style={{flex:1}}>
-              <p style={{fontSize:14,fontWeight:800,color:"#fff",fontFamily:"Sora"}}>Pompiers de Côte d'Ivoire</p>
-              <p style={{fontSize:11,color:"rgba(255,255,255,.6)"}}>Urgence directe · Gratuit</p>
-            </div>
-            <div style={{background:"rgba(255,255,255,.15)",borderRadius:12,padding:"6px 12px"}}><p style={{fontSize:13,fontWeight:800,color:"#fff"}}>180</p></div>
-          </div>
-          <p style={{fontSize:12,color:"rgba(255,255,255,.7)",lineHeight:1.5}}>Votre alerte avec vidéo et localisation GPS sera transmise immédiatement dans la messagerie des pompiers.</p>
-        </div>
-        {sent?(
-          <div style={{margin:"20px",background:"#FFF1F2",border:"1px solid rgba(190,18,60,.2)",borderRadius:20,padding:"28px 20px",textAlign:"center"}}>
-            <div style={{width:60,height:60,borderRadius:"50%",background:"#BE123C",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px"}}><I n="check" s={28} c="#fff"/></div>
-            <p style={{fontSize:18,fontWeight:800,color:C.ink,fontFamily:"Sora"}}>Alerte envoyée !</p>
-            <p style={{fontSize:13,color:C.muted,marginTop:8,lineHeight:1.5}}>Les pompiers ont reçu votre alerte. Restez en sécurité. Réf : #INC-2406-0012</p>
-            {typeUrgence!==null&&<p style={{fontSize:11,color:C.faint,marginTop:4}}>Type : {types[typeUrgence].lb}</p>}
-            {gps&&<p style={{fontSize:11,color:C.faint,marginTop:2}}>📍 GPS : {gps.lat}° N, {gps.lng}° W</p>}
-            <button className="btn btn-g" style={{marginTop:20}} onClick={()=>{setSent(false);go("info");}}>Retour aux alertes</button>
-          </div>
-        ):(
-          <div className="rpt">
-            <p className="fst" style={{paddingTop:4}}>Type d'urgence</p>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-              {types.map((t,i)=>(
-                <button key={i}
-                  onClick={()=>setTypeUrgence(typeUrgence===i?null:i)}
-                  style={{background:typeUrgence===i?t.c:t.bg,border:`2px solid ${typeUrgence===i?t.c:t.c+"33"}`,borderRadius:14,padding:"12px 10px",cursor:"pointer",display:"flex",alignItems:"center",gap:8,fontFamily:"Plus Jakarta Sans",transform:typeUrgence===i?"scale(1.03)":"scale(1)"}}>
-                  <I n={t.ic} s={18} c={typeUrgence===i?"#fff":t.c}/>
-                  <span style={{fontSize:13,fontWeight:700,color:typeUrgence===i?"#fff":t.c}}>{t.lb}</span>
-                  {typeUrgence===i&&<span style={{marginLeft:"auto",fontSize:14}}>✓</span>}
-                </button>
-              ))}
-            </div>
-            {typeUrgence!==null&&(
-              <div style={{background:types[typeUrgence].bg,border:`1px solid ${types[typeUrgence].c}33`,borderRadius:12,padding:"8px 12px",display:"flex",alignItems:"center",gap:8,marginTop:2}}>
-                <I n="check" s={14} c={types[typeUrgence].c}/>
-                <span style={{fontSize:12,fontWeight:700,color:types[typeUrgence].c}}>Sélectionné : {types[typeUrgence].lb}</span>
-              </div>
-            )}
-
-            <p className="fst">Vidéo de la situation</p>
-            <div className="mu">
-              <button className="mb" style={{flex:2}} onClick={()=>videoRef.current&&videoRef.current.click()}>
-                <I n="video" s={24} c="#BE123C"/><span style={{color:"#BE123C",fontWeight:700}}>Filmer maintenant</span>
-              </button>
-              <button className="mb" onClick={()=>galerieRef.current&&galerieRef.current.click()}>
-                <I n="camera" s={22} c={C.orange}/><span>Galerie</span>
-              </button>
-            </div>
-            <input ref={videoRef} type="file" accept="video/*" style={{display:"none"}} onChange={e=>addMedia(e.target.files,"vidéo")}/>
-            <input ref={galerieRef} type="file" accept="image/*,video/*" multiple style={{display:"none"}} onChange={e=>addMedia(e.target.files,"galerie")}/>
-            {medias.length>0&&(
-              <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:4}}>
-                {medias.map((m,i)=>(
-                  <div key={i} style={{display:"flex",alignItems:"center",gap:4,background:"#FFF1F2",borderRadius:20,padding:"4px 10px"}}>
-                    <I n="video" s={12} c="#BE123C"/>
-                    <span style={{fontSize:10,fontWeight:700,color:"#BE123C"}}>{m.nom.slice(0,14)}</span>
-                    <button onClick={()=>setMedias(p=>p.filter((_,j)=>j!==i))} style={{background:"none",border:"none",cursor:"pointer",fontSize:10,color:C.faint}}>✕</button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <p className="fst">Localisation GPS</p>
-            <div className="lb">
-              <I n="pin" s={18} c={C.green}/>
-              <div>
-                <p style={{fontSize:12,fontWeight:600,color:C.green}}>{gpsLoad?"Détection en cours...":"Position détectée automatiquement"}</p>
-                {gps&&<p style={{fontSize:11,color:C.faint,marginTop:2}}>{gps.lat}° N, {gps.lng}° W</p>}
-              </div>
-              <span style={{fontSize:11,fontWeight:700,color:C.green,background:"rgba(22,163,74,.1)",padding:"3px 8px",borderRadius:20,marginLeft:"auto"}}>Requis</span>
-            </div>
-            <div style={{background:"#FFF1F2",border:"1px solid rgba(190,18,60,.2)",borderRadius:14,padding:"12px 14px"}}>
-              <p style={{fontSize:12,fontWeight:700,color:"#BE123C",marginBottom:4}}>En cas de danger immédiat</p>
-              <p style={{fontSize:12,color:C.muted}}>Appelez directement le <strong>180</strong> (Pompiers) ou le <strong>170</strong> (SAMU)</p>
-            </div>
-            <button className="btn btn-p"
-              style={{background:"#BE123C",marginTop:6,marginBottom:20,opacity:(typeUrgence!==null&&gps)?1:0.5}}
-              disabled={typeUrgence===null||!gps}
-              onClick={()=>{setSent(true);playNotif();}}>
-              <I n="send" s={16} c="#fff"/>Alerter les pompiers maintenant
-            </button>
-          </div>
-        )}
-      </div>
-      <Nav a="info" go={go}/>
-    </div>
-  );
-};
-
 /* ── PAIEMENT PREMIUM ──────────────────────────────────────────────────────── */
 const Paiement = ({go,goBack,onSuccess}) => {
   const [method,setMethod]=useState(null);
+  const [periode,setPeriode]=useState("annuel");
   const [done,setDone]=useState(false);
   const [numMM,setNumMM]=useState("");
   const [errPay,setErrPay]=useState("");
 
-  const prix = `${PRIX_PREMIUM_FCFA.toLocaleString("fr-FR")} FCFA / an`;
-  const montant = `${PRIX_PREMIUM_FCFA.toLocaleString("fr-FR")} FCFA`;
+  const prix = periode==="annuel" ? "3 000 FCFA / an" : "1 000 FCFA / mois";
+  const montant = periode==="annuel" ? "3 000 FCFA" : "1 000 FCFA";
 
   const isMM = ["orange","mtn","moov","wave"].includes(method);
-  /* ── Paiement ────────────────────────────────────────────────────────
-     Simulation locale en attendant le branchement de la vraie API de
-     paiement (Mobile Money / carte) qui sera fournie plus tard : le point
-     d'intégration est ici, à l'endroit exact où l'appel réseau réel
-     remplacera cette activation immédiate. ── */
   const valider=()=>{
     setErrPay("");
     if(isMM){
@@ -4197,11 +3041,23 @@ const Paiement = ({go,goBack,onSuccess}) => {
       <div className="isc" style={{paddingTop:0}}>
         <div className="scrhdr" style={{padding:"20px 24px 16px"}}>
           <button className="bk" onClick={goBack}><I n="back" s={18} c={C.ink}/></button>
-          <p className="scrttl">Abonnement Premium</p>
+          <p className="scrttl">Paiement Premium</p>
+        </div>
+
+        <div style={{margin:"0 20px 14px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+          {[{id:"annuel",lb:"Annuel",prix:"3 000 FCFA",eco:"Le plus économique"},{id:"mensuel",lb:"Mensuel",prix:"1 000 FCFA",eco:"Sans engagement"}].map(p=>(
+            <button key={p.id} onClick={()=>setPeriode(p.id)}
+              style={{padding:"14px 12px",borderRadius:18,border:`2px solid ${periode===p.id?C.orange:"rgba(0,0,0,.07)"}`,background:periode===p.id?C.orangeL:"#fff",cursor:"pointer",fontFamily:"Plus Jakarta Sans",textAlign:"center",position:"relative"}}>
+              {p.id==="annuel"&&<span style={{position:"absolute",top:-8,left:"50%",transform:"translateX(-50%)",fontSize:9,fontWeight:800,background:C.orange,color:"#fff",padding:"2px 8px",borderRadius:20,whiteSpace:"nowrap"}}>⭐ MEILLEUR CHOIX</span>}
+              <p style={{fontSize:16,fontWeight:800,color:periode===p.id?C.orange:C.ink,letterSpacing:"-.5px"}}>{p.prix}</p>
+              <p style={{fontSize:11,fontWeight:700,color:periode===p.id?C.orange:C.muted,marginTop:2}}>{p.lb}</p>
+              <p style={{fontSize:10,color:C.faint,marginTop:2}}>{p.eco}</p>
+            </button>
+          ))}
         </div>
 
         <div style={{margin:"0 20px 20px",background:"linear-gradient(135deg,#1C1917,#292524)",borderRadius:22,padding:"20px"}}>
-          <p style={{fontSize:11,fontWeight:700,color:C.orange,letterSpacing:"1px",textTransform:"uppercase",marginBottom:6}}>✦ ABONNEMENT ANNUEL</p>
+          <p style={{fontSize:11,fontWeight:700,color:C.orange,letterSpacing:"1px",textTransform:"uppercase",marginBottom:6}}>✦ FORFAIT PREMIUM — {periode==="annuel"?"ANNUEL":"MENSUEL"}</p>
           <p style={{fontFamily:"Sora,sans-serif",fontSize:26,fontWeight:800,color:"#fff",letterSpacing:"-1px"}}>{prix}</p>
           <p style={{fontSize:12,color:"rgba(255,255,255,.5)",marginTop:4}}>Accès complet · Alerte Violence · Alerte Enlèvement</p>
           <div style={{marginTop:12,display:"flex",gap:8,flexWrap:"wrap"}}>
@@ -4270,11 +3126,7 @@ const Paiement = ({go,goBack,onSuccess}) => {
 };
 
 /* ── INSCRIPTION ─────────────────────────────────────────────────────────────── */
-const Signup = ({go,goBack,onSignup,userInfo={},comptesInscrits=[],typesService=TYPES_SERVICE_DEFAUT}) => {
-  /* Le parcours "Service public / Institution" est masqué pour cette
-     version (voir FEATURES.institutionSignup) : on saute directement au
-     formulaire citoyen, sans supprimer le code de l'autre parcours. */
-  const [type,setType]=useState(FEATURES.institutionSignup?null:"user"); // "user" | "service"
+const Signup = ({go,goBack,onSignup,userInfo={},comptesInscrits=[]}) => {
   const [plan,setPlan]=useState("premium");
   const [cgu,setCgu]=useState(false);
   const [nm,setNm]=useState("");
@@ -4282,13 +3134,6 @@ const Signup = ({go,goBack,onSignup,userInfo={},comptesInscrits=[],typesService=
   const [mail,setMail]=useState(""); // facultatif
   const [commune,setCommune]=useState("");
   const [pw,setPw]=useState("");
-  const [nomInstitution,setNomInstitution]=useState("");
-  const [typeService,setTypeService]=useState("");
-  const [villeInstitution,setVilleInstitution]=useState("");
-  const [responsable,setResponsable]=useState("");
-  const [phInstitution,setPhInstitution]=useState("");
-  const [mailInstitution,setMailInstitution]=useState(""); // facultatif
-  const [pwInstitution,setPwInstitution]=useState("");
 
   /* ── Détection de compte déjà existant ──────────────────────────────────
      Un numéro est considéré "déjà inscrit" s'il correspond à un compte de
@@ -4298,181 +3143,16 @@ const Signup = ({go,goBack,onSignup,userInfo={},comptesInscrits=[],typesService=
   const compteExistant = ph.length===10 && (
     DEMO_ACCOUNTS.some(c=>c.ph===ph) || comptesInscrits.some(c=>c.ph===ph)
   );
-  /* ── Idem côté institutionnel : un numéro professionnel déjà enregistré
-     ne peut pas créer un second compte institutionnel. ── */
-  const institutionExistante = phInstitution.length===10 && (
-    DEMO_ACCOUNTS.some(c=>c.ph===phInstitution) || comptesInscrits.some(c=>c.ph===phInstitution)
-  );
 
-  /* ── Tous les champs sont obligatoires sauf l'email ── */
-  const institutionValide = nomInstitution.trim() && typeService && villeInstitution.trim()
-    && responsable.trim() && phInstitution.length===10 && pwInstitution.length===6 && !institutionExistante;
-
-  /* ── Choix du type de compte ── */
-  if(!type) return (
-    <div className="scr on" style={{display:"flex",flexDirection:"column"}}>
+  /* ── Inscription utilisateur particulier ── */
+  return (
+    <div className="scr on" style={{display:"flex"}}>
       <div className="scrhdr">
         <button className="bk" onClick={goBack}><I n="back" s={18} c={C.ink}/></button>
         <p className="scrttl">Créer un compte</p>
       </div>
-      <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"0 24px 40px"}}>
-        <div style={{marginBottom:28,textAlign:"center"}}>
-          <p style={{fontFamily:"Sora,sans-serif",fontSize:20,fontWeight:800,color:C.ink,letterSpacing:"-.5px",marginBottom:6}}>Vous êtes ?</p>
-          <p style={{fontSize:13,color:C.muted,lineHeight:1.5}}>Choisissez le type de compte qui correspond à votre situation</p>
-        </div>
-        <div style={{width:"100%",display:"flex",flexDirection:"column",gap:14}}>
-          <button onClick={()=>setType("user")} style={{background:"#fff",border:"2px solid rgba(0,0,0,.07)",borderRadius:22,padding:"22px 20px",cursor:"pointer",textAlign:"left",fontFamily:"Plus Jakarta Sans"}} onMouseOver={e=>{e.currentTarget.style.borderColor=C.orange;e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 12px 32px rgba(249,115,22,.12)"}} onMouseOut={e=>{e.currentTarget.style.borderColor="rgba(0,0,0,.07)";e.currentTarget.style.transform="translateY(0)";e.currentTarget.style.boxShadow="none"}}>
-            <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:10}}>
-              <div style={{width:48,height:48,borderRadius:16,background:C.orangeL,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                <I n="user" s={24} c={C.orange}/>
-              </div>
-              <div>
-                <p style={{fontSize:16,fontWeight:800,color:C.ink,letterSpacing:"-.3px"}}>Utilisateur particulier</p>
-                <span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:20,background:C.orangeL,color:C.orange}}>GRATUIT · PREMIUM</span>
-              </div>
-            </div>
-            <p style={{fontSize:12,color:C.muted,lineHeight:1.5}}>Accédez aux services de sécurité, planning personnel et alertes publiques pour votre usage quotidien.</p>
-          </button>
-          <button onClick={()=>setType("service")} style={{background:"#fff",border:"2px solid rgba(0,0,0,.07)",borderRadius:22,padding:"22px 20px",cursor:"pointer",textAlign:"left",fontFamily:"Plus Jakarta Sans"}} onMouseOver={e=>{e.currentTarget.style.borderColor=C.green;e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 12px 32px rgba(22,163,74,.12)"}} onMouseOut={e=>{e.currentTarget.style.borderColor="rgba(0,0,0,.07)";e.currentTarget.style.transform="translateY(0)";e.currentTarget.style.boxShadow="none"}}>
-            <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:10}}>
-              <div style={{width:48,height:48,borderRadius:16,background:C.greenL,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                <I n="building" s={24} c={C.green}/>
-              </div>
-              <div>
-                <p style={{fontSize:16,fontWeight:800,color:C.ink,letterSpacing:"-.3px"}}>Service public / Institution</p>
-                <span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:20,background:C.greenL,color:C.green}}>SOUMIS À VALIDATION</span>
-              </div>
-            </div>
-            <p style={{fontSize:12,color:C.muted,lineHeight:1.5}}>Pour les ministères, mairies, pompiers, police et autres services institutionnels. Votre inscription sera validée par l'administrateur ALERTE CI.</p>
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-  /* ── Formulaire Service public ── */
-  if(type==="service") return (
-    <div className="scr on" style={{display:"flex"}}>
-      <div className="scrhdr">
-        <button className="bk" onClick={()=>setType(null)}><I n="back" s={18} c={C.ink}/></button>
-        <p className="scrttl">Compte Institutionnel</p>
-      </div>
       <div className="isc">
-        <div style={{background:C.greenL,border:"1px solid rgba(22,163,74,.2)",borderRadius:16,padding:"14px 16px",marginBottom:4}}>
-          <p style={{fontSize:12,fontWeight:700,color:C.green,marginBottom:4}}>🏛 Inscription institutionnelle</p>
-          <p style={{fontSize:12,color:C.muted,lineHeight:1.5}}>Votre demande sera examinée et validée par notre équipe dans un délai de 24 à 72h ouvrables. Vous recevrez une notification par email et SMS à la validation.</p>
-        </div>
-        <p className="fst">Informations de l'institution</p>
-        <div className="ig">
-          <div className="if si" style={{animationDelay:"0ms"}}>
-            <I n="building" s={18} c={C.faint}/>
-            <input type="text" value={nomInstitution} onChange={e=>setNomInstitution(e.target.value)} placeholder="Nom de l'institution / service *"/>
-          </div>
-          <div className="if si" style={{animationDelay:"40ms"}}>
-            <I n="star" s={18} c={C.faint}/>
-            <select value={typeService} onChange={e=>setTypeService(e.target.value)} style={{flex:1,border:"none",outline:"none",background:"transparent",fontFamily:"'Plus Jakarta Sans',sans-serif",fontSize:15,fontWeight:500,color:typeService?C.ink:C.faint,appearance:"none"}}>
-              <option value="">Type de service *</option>
-              {typesService.map(t=><option key={t}>{t}</option>)}
-            </select>
-          </div>
-          <div className="if si" style={{animationDelay:"80ms"}}>
-            <I n="pin" s={18} c={C.faint}/>
-            <input type="text" value={villeInstitution} onChange={e=>setVilleInstitution(e.target.value)} placeholder="Ville / Commune d'implantation *"/>
-          </div>
-        </div>
-        <p className="fst">Responsable du compte</p>
-        <div className="ig">
-          <div className="if si" style={{animationDelay:"120ms"}}>
-            <I n="user" s={18} c={C.faint}/>
-            <input type="text" value={responsable} onChange={e=>setResponsable(e.target.value)} placeholder="Nom et prénom du responsable *"/>
-          </div>
-          <div className="if si" style={{animationDelay:"160ms"}}>
-            <I n="phone" s={18} c={C.faint}/>
-            <input type="tel" value={phInstitution} onChange={e=>setPhInstitution(e.target.value.replace(/\D/g,"").slice(0,10))} placeholder="Téléphone professionnel (10 chiffres) *" maxLength={10}/>
-            {phInstitution.length===10&&!institutionExistante&&<span style={{fontSize:11,color:C.green,fontWeight:700}}>✓</span>}
-          </div>
-          {institutionExistante&&(
-            <div style={{background:"#FFF7ED",border:"1.5px solid rgba(249,115,22,.3)",borderRadius:14,padding:"12px 14px",display:"flex",alignItems:"flex-start",gap:10,animation:"stin 200ms var(--eo)"}}>
-              <span style={{fontSize:18,flexShrink:0}}>ℹ️</span>
-              <div style={{flex:1}}>
-                <p style={{fontSize:12,fontWeight:800,color:C.orange,marginBottom:3}}>Ce numéro est déjà inscrit</p>
-                <p style={{fontSize:11,color:C.muted,lineHeight:1.5,marginBottom:8}}>Un compte institutionnel existe déjà avec ce numéro. Connectez-vous avec votre code d'accès au lieu de créer un nouveau compte.</p>
-                <button onClick={()=>go("login")}
-                  style={{fontSize:12,fontWeight:700,color:"#fff",background:C.orange,border:"none",borderRadius:10,padding:"7px 14px",cursor:"pointer",fontFamily:"Plus Jakarta Sans"}}>
-                  Se connecter →
-                </button>
-              </div>
-            </div>
-          )}
-          <div className="if si" style={{animationDelay:"200ms"}}>
-            <I n="mail" s={18} c={C.faint}/>
-            <input type="email" value={mailInstitution} onChange={e=>setMailInstitution(e.target.value)} placeholder="Email officiel (.gouv.ci ou institutionnel)"/>
-            <span style={{fontSize:9,fontWeight:700,color:C.faint,background:C.surf,padding:"2px 6px",borderRadius:8,flexShrink:0}}>Optionnel</span>
-          </div>
-          <div className="if si" style={{animationDelay:"240ms",flexDirection:"column",alignItems:"stretch",gap:8,background:"transparent",border:"none",padding:0}}>
-            <p className="fst" style={{paddingTop:4}}>Créez votre code d'accès (6 chiffres) *</p>
-            <p style={{fontSize:11,color:C.muted,textAlign:"center",marginTop:-6,marginBottom:4,lineHeight:1.5}}>
-              Ce code vous servira, avec votre numéro de téléphone, à vous reconnecter au tableau de bord institutionnel.
-            </p>
-            <div style={{display:"flex",gap:8,justifyContent:"center"}}>
-              {[0,1,2,3,4,5].map(i=>(
-                <input key={i} id={`pwi-${i}`} type="password" inputMode="numeric"
-                  maxLength={1} value={pwInstitution[i]||""}
-                  onChange={e=>{
-                    const v=e.target.value.replace(/\D/g,"").slice(0,1);
-                    const arr=pwInstitution.split("");
-                    arr[i]=v;
-                    const next=arr.join("").slice(0,6);
-                    setPwInstitution(next);
-                    if(v&&i<5) document.getElementById(`pwi-${i+1}`)?.focus();
-                  }}
-                  onKeyDown={e=>{if(e.key==="Backspace"&&!pwInstitution[i]&&i>0) document.getElementById(`pwi-${i-1}`)?.focus();}}
-                  style={{width:44,height:52,borderRadius:12,
-                    border:`2px solid ${pwInstitution.length>i?C.green:C.surfH}`,
-                    textAlign:"center",fontSize:20,fontWeight:800,color:C.ink,
-                    fontFamily:"Plus Jakarta Sans",outline:"none",
-                    background:pwInstitution.length>i?C.greenL:"#fff"}}/>
-              ))}
-            </div>
-          </div>
-        </div>
-        <p className="fst">Document justificatif</p>
-        <button className="mb" style={{width:"100%",flexDirection:"row",gap:12,marginBottom:16}}>
-          <I n="file" s={22} c={C.green}/>
-          <span style={{fontSize:13,fontWeight:600,color:C.green}}>Joindre une lettre officielle ou attestation</span>
-        </button>
-        <div style={{display:"flex",alignItems:"flex-start",gap:10,marginBottom:16,padding:"4px 0"}}>
-          <button onClick={()=>setCgu(p=>!p)} style={{width:22,height:22,borderRadius:6,border:`2px solid ${cgu?C.orange:C.surfH}`,background:cgu?C.orange:"transparent",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0,marginTop:1}}>
-            {cgu&&<I n="check" s={13} c="#fff"/>}
-          </button>
-          <p style={{fontSize:12,color:C.muted,lineHeight:1.5}}>J'atteste représenter officiellement cette institution et j'accepte les <button onClick={()=>go("cgu")} style={{background:"none",border:"none",cursor:"pointer",color:C.orange,fontWeight:700,fontSize:12,fontFamily:"inherit"}}>Conditions d'utilisation</button></p>
-        </div>
-        <div style={{marginBottom:8}}>
-          <button className="btn btn-gr" style={{opacity:cgu&&institutionValide?1:.5}} disabled={!cgu||!institutionValide}
-            onClick={()=>{
-              onSignup&&onSignup({
-                nm:nomInstitution.trim(), ph:phInstitution, mail:mailInstitution.trim(),
-                commune:villeInstitution.trim(), pin:pwInstitution,
-                typeService, responsable:responsable.trim(),
-                statut:"en_attente", plan:"institution", target:"home_service",
-              });
-              go("home_service");
-            }}>
-            Soumettre la demande <I n="send" s={16} c="#fff"/>
-          </button>
-        </div>
-        <p style={{fontSize:11,color:C.faint,textAlign:"center",paddingBottom:16}}>* Champs obligatoires (sauf email) · Validation sous 24-72h · Notification email & SMS</p>
-      </div>
-    </div>
-  );
-  /* ── Formulaire Utilisateur particulier ── */
-  return (
-    <div className="scr on" style={{display:"flex"}}>
-      <div className="scrhdr">
-        <button className="bk" onClick={()=>FEATURES.institutionSignup?setType(null):goBack()}><I n="back" s={18} c={C.ink}/></button>
-        <p className="scrttl">Compte Utilisateur</p>
-      </div>
-      <div className="isc">
-        <p className="fst">Informations personnelles</p>
+        <p className="fst" style={{marginTop:0}}>Informations personnelles</p>
         <div className="ig">
           <div className="if si" style={{animationDelay:"0ms"}}>
             <I n="user" s={18} c={C.faint}/>
@@ -4542,10 +3222,22 @@ const Signup = ({go,goBack,onSignup,userInfo={},comptesInscrits=[],typesService=
             )}
           </div>
         </div>
-        <div style={{background:"linear-gradient(135deg,#1C1917,#292524)",borderRadius:18,padding:"16px 18px",marginTop:20,marginBottom:16}}>
-          <p style={{fontSize:11,fontWeight:700,color:C.orange,letterSpacing:"1px",textTransform:"uppercase",marginBottom:6}}>✦ OFFERT À LA CRÉATION</p>
-          <p style={{fontFamily:"Sora,sans-serif",fontSize:16,fontWeight:800,color:"#fff",marginBottom:4}}>1 mois d'essai gratuit — Akwaba</p>
-          <p style={{fontSize:12,color:"rgba(255,255,255,.55)",lineHeight:1.5}}>Accès complet à Alerte Violence et Alerte Enlèvement dès la création du compte. Ensuite, {PRIX_PREMIUM_FCFA.toLocaleString("fr-FR")} FCFA / an pour continuer.</p>
+        <p className="fst">Choisir un forfait</p>
+        <div style={{background:C.orangeL,border:"1px solid rgba(249,115,22,.2)",borderRadius:14,padding:"12px 14px",marginBottom:12,display:"flex",alignItems:"flex-start",gap:10}}>
+          <span style={{fontSize:18,flexShrink:0}}>🎁</span>
+          <p style={{fontSize:12,color:C.muted,lineHeight:1.5}}><strong style={{color:C.orange}}>1 mois d'essai Premium offert</strong> dès la création de votre compte, quel que soit le forfait choisi ci-dessous. Accès complet à Alerte Violence et Alerte Enlèvement pendant 30 jours.</p>
+        </div>
+        <div className="ps">
+          <button className={`po ${plan==="free"?"sel-g":""}`} onClick={()=>setPlan("free")}>
+            <p style={{fontSize:22,marginBottom:6}}>🟢</p>
+            <p style={{fontSize:13,fontWeight:700,color:C.ink}}>Gratuit</p>
+            <p style={{fontSize:11,fontWeight:600,color:C.green,marginTop:3}}>0 FCFA</p>
+          </button>
+          <button className={`po ${plan==="premium"?"sel":""}`} onClick={()=>setPlan("premium")}>
+            <p style={{fontSize:22,marginBottom:6}}>⭐</p>
+            <p style={{fontSize:13,fontWeight:700,color:C.ink}}>Premium</p>
+            <p style={{fontSize:11,fontWeight:600,color:C.orange,marginTop:3}}>3 000 FCFA/an</p>
+          </button>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16,padding:"4px 0"}}>
           <button onClick={()=>setCgu(p=>!p)} style={{width:22,height:22,borderRadius:6,border:`2px solid ${cgu?C.orange:C.surfH}`,background:cgu?C.orange:"transparent",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0}}>
@@ -4556,458 +3248,17 @@ const Signup = ({go,goBack,onSignup,userInfo={},comptesInscrits=[],typesService=
         <div style={{marginBottom:8}}>
           <button className="btn btn-p"
             onClick={()=>{
-              onSignup&&onSignup({nm:saneTxt(nm,120),ph,mail,commune,pin:pw,plan:"gratuit"});
-              go("home");
+              onSignup&&onSignup({nm:nm.trim(),ph,mail,commune,pin:pw,plan:plan==="premium"?"premium":"gratuit"});
+              if(plan==="premium") go("paiement");
+              else go("home");
             }}
             style={{opacity:cgu&&nm.trim()&&ph.length===10&&pw.length===6&&!compteExistant?1:.5}}
             disabled={!cgu||!nm.trim()||ph.length<10||pw.length<6||compteExistant}>
-            Créer mon compte — démarrer l'essai Akwaba <I n="arrow" s={16} c="#fff"/>
+            {plan==="premium"?"Continuer vers le paiement":"Créer mon compte"} <I n="arrow" s={16} c="#fff"/>
           </button>
         </div>
-        <p style={{fontSize:11,color:C.faint,textAlign:"center",paddingBottom:16}}>1 compte = 1 numéro = 1 appareil connecté · Connexion par code d'accès uniquement</p>
+        <p style={{fontSize:11,color:C.faint,textAlign:"center",paddingBottom:16}}>1 compte = 1 appareil · Connexion par code d'accès uniquement</p>
       </div>
-    </div>
-  );
-};
-
-/* ══════════════════════════════════════════════════════════════════════════════
-   PARCOURS SERVICE PUBLIC — 2 écrans : HomeService + ProfilService
-   Nav réduite : Accueil | Profil
-══════════════════════════════════════════════════════════════════════════════ */
-
-const NavService = ({a,go}) => {
-  const items=[{id:"home_service",ic:"home",lb:"Accueil"},{id:"profil_service",ic:"user",lb:"Profil"}];
-  return (
-    <nav className="bnav">
-      {items.map(it=>(
-        <button key={it.id} className={`ni ${a===it.id?"a":""}`} onClick={()=>go(it.id)}>
-          <span style={{width:24,height:24,display:"flex",transform:a===it.id?"scale(1.15)":"scale(1)"}}>
-            <I n={it.ic} s={22} c={a===it.id?"#16A34A":"#A8A29E"} w={a===it.id?2.2:1.8}/>
-          </span>
-          <span style={{fontSize:10,fontWeight:600,color:a===it.id?"#16A34A":"#A8A29E",transition:"color 180ms ease"}}>{it.lb}</span>
-        </button>
-      ))}
-    </nav>
-  );
-};
-
-/* ── Statuts de validation d'un compte institutionnel ──────────────────────
-   Un compte institutionnel n'est marqué "validé et actif" qu'après examen
-   par l'équipe ALERTE CI (dashboard admin, hors périmètre de cette maquette
-   citoyen/service). Tant que ce n'est pas le cas, le statut réel est
-   "en_attente" (par défaut à l'inscription) ou "refuse". Les comptes sans
-   statut explicite (connexion historique/démo) sont considérés validés. ── */
-const STATUTS_INSTITUTION = {
-  valide:     {bg:C.greenL,   border:"rgba(22,163,74,.25)", dot:C.green,  txt:C.green,  label:"Compte validé et actif",                  badge:"VALIDÉ"},
-  en_attente: {bg:"#FFF7ED",  border:"rgba(249,115,22,.3)", dot:C.orange, txt:C.orange, label:"Compte en attente de validation",         badge:"EN EXAMEN"},
-  refuse:     {bg:"#FFF1F2",  border:"rgba(220,38,38,.25)", dot:"#DC2626",txt:"#DC2626",label:"Demande refusée — contactez le support",  badge:"REFUSÉ"},
-};
-
-const HomeService = ({go,goBack,userInfo={},alertesPubliques=[],ajouterAlertePublique}) => {
-  const nomService = userInfo.nm && userInfo.nm.trim() ? userInfo.nm.trim() : "Service Public";
-  const statutCompte = userInfo.statut || "valide"; // compte sans statut explicite = legacy validé
-  const [alertes]=useState([]);
-  const [msg,setMsg]=useState("");
-  const [sent,setSent]=useState(false);
-  const [tab,setTab]=useState("alertes"); // "alertes" | "diffuser"
-  const [urgentDiffuse,setUrgentDiffuse]=useState(false);
-
-  /* ── Le type de service institutionnel (choisi à l'inscription) détermine
-     automatiquement l'écran citoyen où la diffusion doit apparaître :
-     "service" porte ce type pour le filtrage côté Alerte Info, tandis que
-     le NOM réel de l'institution (nomService) reste visible dans le
-     contenu du message diffusé. SODEXAM garde son écran météo existant. ── */
-  const ROUTAGE_PAR_TYPE = {
-    "Ministère":                          {c:"#C2410C", bg:"rgba(249,115,22,.15)", icon:"🏛️", cible:"sp_ministere"},
-    "Mairie / Commune":                   {c:"#2563EB", bg:"rgba(59,130,246,.15)", icon:"🏢", cible:"sp_mairie"},
-    "Police":                             {c:"#1D4ED8", bg:"rgba(29,78,216,.15)",  icon:"🚓", cible:"sp_police"},
-    "Gendarmerie":                        {c:"#15803D", bg:"rgba(21,128,61,.15)",  icon:"🪖", cible:"sp_gendarmerie"},
-    "AGEROUTE":                           {c:"#B45309", bg:"rgba(180,83,9,.15)",   icon:"🚧", cible:"sp_routier"},
-    "ANAGED":                              {c:"#15803D", bg:"rgba(21,128,61,.15)",  icon:"🗑️", cible:"sp_anaged"},
-    "Hôpital et service de santé public": {c:"#BE123C", bg:"rgba(190,18,60,.15)",  icon:"🏥", cible:"sp_sante"},
-    "La Ligue":                           {c:"#7C3AED", bg:"rgba(124,58,237,.15)", icon:"⚖️", cible:"sp_ligue"},
-    "SODEXAM":                            {c:"#2563EB", bg:"rgba(59,130,246,.15)", icon:"🌧️", cible:"info"},
-    "Autres services et organisations":   {c:"#0E7490", bg:"rgba(14,116,144,.15)", icon:"📢", cible:"sp_autres"},
-  };
-  const routage = ROUTAGE_PAR_TYPE[userInfo.typeService] || {c:C.green, bg:C.greenL, icon:"📢", cible:"sp_autres"};
-
-  const diffuser = () => {
-    if(!msg.trim()) return;
-    ajouterAlertePublique && ajouterAlertePublique({
-      urgent: urgentDiffuse,
-      c: routage.c, bg: routage.bg, icon: routage.icon,
-      service: userInfo.typeService||nomService, cible: routage.cible,
-      institution: nomService,
-      titre: msg.trim().slice(0,70)+(msg.trim().length>70?"…":""),
-      apercu: msg.trim(),
-    });
-    playNotif();
-    setSent(true);
-    setMsg("");
-    setUrgentDiffuse(false);
-  };
-  return (
-    <div className="scr on" style={{display:"flex"}}>
-      <div className="scrl">
-
-        <div style={{padding:"24px 24px 0",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-          <div>
-            <p style={{fontSize:13,color:C.muted,fontWeight:500}}>{nomService}</p>
-            <p style={{fontFamily:"Sora,sans-serif",fontSize:20,fontWeight:800,color:C.ink,letterSpacing:"-.5px",marginTop:2}}>Tableau de bord</p>
-          </div>
-          <div style={{width:44,height:44,borderRadius:50,background:"linear-gradient(135deg,#16A34A,#15803D)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-            <I n="building" s={22} c="#fff"/>
-          </div>
-        </div>
-
-        {(() => {
-          const s = STATUTS_INSTITUTION[statutCompte] || STATUTS_INSTITUTION.valide;
-          return (
-            <div style={{margin:"16px 20px 0",background:s.bg,border:`1px solid ${s.border}`,borderRadius:16,padding:"12px 14px",display:"flex",alignItems:"center",gap:10}}>
-              <div style={{width:8,height:8,borderRadius:"50%",background:s.dot,animation:statutCompte==="valide"?"bk 2s ease infinite":"none",flexShrink:0}}/>
-              <p style={{fontSize:12,fontWeight:700,color:s.txt}}>{s.label}</p>
-              <span style={{marginLeft:"auto",fontSize:10,fontWeight:700,color:s.txt,background:`${s.dot}1A`,padding:"2px 8px",borderRadius:20}}>{s.badge}</span>
-            </div>
-          );
-        })()}
-
-        <div style={{padding:"14px 20px 0",display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-          {[
-            {val:alertes.length,lb:"Alertes reçues",c:C.orange,bg:C.orangeL},
-            {val:alertes.filter(a=>a.urgent).length,lb:"Urgentes",c:"#DC2626",bg:"#FFF1F2"},
-          ].map((k,i)=>(
-            <div key={i} style={{background:k.bg,borderRadius:16,padding:"14px 16px"}}>
-              <p style={{fontFamily:"Sora,sans-serif",fontSize:28,fontWeight:800,color:k.c,letterSpacing:"-1px"}}>{k.val}</p>
-              <p style={{fontSize:11,fontWeight:600,color:k.c,opacity:.7,marginTop:2}}>{k.lb}</p>
-            </div>
-          ))}
-        </div>
-
-        <div style={{padding:"16px 20px 0",display:"flex",gap:8}}>
-          {[{id:"alertes",lb:"Reçues"},{id:"diffuser",lb:"Diffuser"},{id:"mesinfos",lb:"Mes infos"}].map(t=>(
-            <button key={t.id} onClick={()=>{setTab(t.id);setSent(false);}} style={{flex:1,padding:"10px 6px",borderRadius:12,border:"none",cursor:"pointer",fontFamily:"Plus Jakarta Sans",fontSize:12,fontWeight:700,background:tab===t.id?C.green:"#fff",color:tab===t.id?"#fff":C.muted,boxShadow:tab===t.id?"0 4px 14px rgba(22,163,74,.25)":"none"}}>
-              {t.lb}
-            </button>
-          ))}
-        </div>
-
-        {tab==="alertes"&&(
-          <div style={{padding:"14px 20px",display:"flex",flexDirection:"column",gap:10}}>
-            {alertes.length===0&&(
-              <div style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:18,padding:"28px 20px",textAlign:"center"}}>
-                <p style={{fontSize:28,marginBottom:8}}>📭</p>
-                <p style={{fontSize:13,fontWeight:700,color:C.ink,marginBottom:4}}>Aucun signalement reçu</p>
-                <p style={{fontSize:12,color:C.muted,lineHeight:1.5}}>Les signalements citoyens transmis à votre service apparaîtront ici.</p>
-              </div>
-            )}
-            {alertes.map((a,i)=>(
-              <div key={i} className="si" style={{animationDelay:`${i*50}ms`,background:"#fff",border:`1.5px solid ${a.urgent?"rgba(220,38,38,.2)":"rgba(0,0,0,.07)"}`,borderRadius:18,padding:"14px 16px",cursor:"pointer"}}
-                onMouseOver={e=>e.currentTarget.style.transform="translateY(-1px)"}
-                onMouseOut={e=>e.currentTarget.style.transform="translateY(0)"}>
-                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
-                  <div style={{width:36,height:36,borderRadius:12,background:a.urgent?"#FFF1F2":C.orangeL,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                    <I n="building" s={18} c={a.urgent?"#DC2626":C.orange}/>
-                  </div>
-                  <div style={{flex:1}}>
-                    <div style={{display:"flex",alignItems:"center",gap:6}}>
-                      <p style={{fontSize:13,fontWeight:700,color:C.ink}}>{a.user}</p>
-                      {a.urgent&&<span style={{fontSize:9,fontWeight:800,color:"#DC2626",background:"#FFF1F2",padding:"2px 7px",borderRadius:20,letterSpacing:".5px"}}>URGENT</span>}
-                    </div>
-                    <p style={{fontSize:11,color:C.muted,marginTop:1}}>{a.commune} · {a.heure}</p>
-                  </div>
-                </div>
-                <p style={{fontSize:12,color:C.muted,lineHeight:1.5,marginBottom:10}}>{a.msg}</p>
-                <div style={{display:"flex",gap:8}}>
-                  <button style={{flex:1,padding:"8px",background:C.greenL,border:"none",borderRadius:10,cursor:"pointer",fontSize:12,fontWeight:700,color:C.green,fontFamily:"Plus Jakarta Sans"}} onClick={playNotif}>Traiter</button>
-                  <button style={{flex:1,padding:"8px",background:C.surf,border:"none",borderRadius:10,cursor:"pointer",fontSize:12,fontWeight:700,color:C.muted,fontFamily:"Plus Jakarta Sans"}}>Archiver</button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {tab==="diffuser"&&(
-          <div style={{padding:"14px 20px"}}>
-            {statutCompte!=="valide"?(
-              <div style={{background:"#FFF7ED",border:"1px solid rgba(249,115,22,.3)",borderRadius:20,padding:"28px 20px",textAlign:"center",marginTop:8}}>
-                <div style={{width:56,height:56,borderRadius:"50%",background:C.orange,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 14px"}}>
-                  <span style={{fontSize:26}}>⏳</span>
-                </div>
-                <p style={{fontSize:17,fontWeight:800,color:C.ink,fontFamily:"Sora"}}>
-                  {statutCompte==="refuse"?"Compte non autorisé":"Validation en cours"}
-                </p>
-                <p style={{fontSize:13,color:C.muted,marginTop:8,lineHeight:1.5}}>
-                  {statutCompte==="refuse"
-                    ?"Votre demande d'inscription institutionnelle a été refusée. Contactez le support ALERTE CI pour plus d'informations."
-                    :"Votre compte est en attente de validation par l'équipe ALERTE CI. La diffusion d'informations sera activée dès l'approbation de votre demande (24 à 72h ouvrables)."}
-                </p>
-              </div>
-            ):sent?(
-              <div style={{background:C.greenL,border:"1px solid rgba(22,163,74,.3)",borderRadius:20,padding:"28px 20px",textAlign:"center",marginTop:8}}>
-                <div style={{width:56,height:56,borderRadius:"50%",background:C.green,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 14px"}}><I n="check" s={26} c="#fff"/></div>
-                <p style={{fontSize:17,fontWeight:800,color:C.ink,fontFamily:"Sora"}}>Information diffusée</p>
-                <p style={{fontSize:13,color:C.muted,marginTop:8,lineHeight:1.5}}>Votre message a été envoyé à tous les utilisateurs ALERTE CI concernés.</p>
-                <button className="btn btn-g" style={{marginTop:20}} onClick={()=>setSent(false)}>Nouveau message</button>
-              </div>
-            ):(
-              <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                <div style={{background:C.surf,borderRadius:16,padding:"12px 14px"}}>
-                  <p style={{fontSize:12,fontWeight:700,color:C.muted,marginBottom:4}}>Destinataires</p>
-                  <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                    {["Tous les utilisateurs","Par commune","Par code alerte"].map((d,i)=>(
-                      <button key={i} style={{padding:"5px 12px",borderRadius:20,border:`1.5px solid ${i===0?C.green:"rgba(0,0,0,.1)"}`,background:i===0?C.greenL:"#fff",color:i===0?C.green:C.muted,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"Plus Jakarta Sans"}}>
-                        {d}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div style={{display:"flex",alignItems:"center",gap:10,background:routage.bg,borderRadius:14,padding:"12px 14px"}}>
-                  <span style={{fontSize:20}}>{routage.icon}</span>
-                  <div>
-                    <p style={{fontSize:12,fontWeight:700,color:routage.c}}>Diffusion automatique</p>
-                    <p style={{fontSize:11,color:C.muted,marginTop:1}}>Votre message apparaîtra chez les citoyens dans l'écran {userInfo.typeService||"Service Public"} d'Alerte Info.</p>
-                  </div>
-                </div>
-                <div className="if" style={{alignItems:"flex-start",paddingTop:12}}>
-                  <I n="alert" s={18} c={C.faint} style={{marginTop:2}}/>
-                  <textarea rows={4} value={msg} onChange={e=>setMsg(e.target.value)} placeholder="Rédigez votre message d'information ou d'alerte à destination des citoyens..."/>
-                </div>
-                <button onClick={()=>setUrgentDiffuse(p=>!p)}
-                  style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderRadius:12,border:`1.5px solid ${urgentDiffuse?"#DC2626":C.border}`,background:urgentDiffuse?"#FFF1F2":"#fff",cursor:"pointer",fontFamily:"Plus Jakarta Sans"}}>
-                  <div style={{width:18,height:18,borderRadius:5,border:`2px solid ${urgentDiffuse?"#DC2626":C.surfH}`,background:urgentDiffuse?"#DC2626":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                    {urgentDiffuse&&<I n="check" s={11} c="#fff"/>}
-                  </div>
-                  <span style={{fontSize:12,fontWeight:700,color:urgentDiffuse?"#DC2626":C.muted}}>Marquer comme URGENT</span>
-                </button>
-                <div style={{display:"flex",gap:10,marginBottom:8}}>
-                  <button className="mb" style={{flex:1}}><I n="camera" s={20} c={C.muted}/><span>Photo</span></button>
-                  <button className="mb" style={{flex:1}}><I n="video" s={20} c={C.muted}/><span>Vidéo</span></button>
-                </div>
-                <p style={{fontSize:11,color:C.faint,textAlign:"center"}}>⏱ Cette information sera visible 24h dans Alerte Info et à l'Accueil des utilisateurs</p>
-                <button className="btn btn-gr" onClick={diffuser} style={{opacity:msg.trim()?1:.5}} disabled={!msg.trim()}>
-                  <I n="send" s={16} c="#fff"/>Diffuser aux utilisateurs
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-
-        {tab==="mesinfos"&&(() => {
-          /* "Mes infos" n'affiche que les publications de CE compte précis —
-             jamais les données de démonstration des autres services. */
-          const mesAlertes = alertesPubliques.filter(a=>!a.citoyen && (a.institution||a.service)===nomService);
-          return (
-          <div style={{padding:"14px 20px",display:"flex",flexDirection:"column",gap:10}}>
-            {mesAlertes.length===0&&(
-              <div style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:18,padding:"28px 20px",textAlign:"center"}}>
-                <p style={{fontSize:28,marginBottom:8}}>📭</p>
-                <p style={{fontSize:13,fontWeight:700,color:C.ink,marginBottom:4}}>Aucune information diffusée</p>
-                <p style={{fontSize:12,color:C.muted,lineHeight:1.5}}>Vos publications apparaîtront ici avec leur temps restant avant expiration (24h).</p>
-              </div>
-            )}
-            {[...mesAlertes].sort((a,b)=>b.ts-a.ts).map((a,i)=>{
-              const heuresRestantes = Math.max(0, 24-((Date.now()-a.ts)/(60*60*1000)));
-              return (
-                <div key={a.id} className="si" style={{animationDelay:`${i*50}ms`,background:"#fff",border:`1.5px solid ${a.urgent?"rgba(220,38,38,.2)":C.border}`,borderRadius:18,padding:"14px 16px"}}>
-                  <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
-                    <div style={{width:36,height:36,borderRadius:12,background:a.bg,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:16}}>{a.icon}</div>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{display:"flex",alignItems:"center",gap:6}}>
-                        <p style={{fontSize:13,fontWeight:700,color:C.ink}}>{a.titre}</p>
-                        {a.urgent&&<span style={{fontSize:9,fontWeight:800,color:"#fff",background:"#DC2626",padding:"2px 7px",borderRadius:20,flexShrink:0}}>URGENT</span>}
-                      </div>
-                      <p style={{fontSize:11,color:C.muted,marginTop:1}}>{formatHeureRelative(a.ts)}</p>
-                    </div>
-                  </div>
-                  <p style={{fontSize:12,color:C.muted,lineHeight:1.5,marginBottom:10}}>{a.apercu}</p>
-                  <div style={{display:"flex",alignItems:"center",gap:6,background:C.surf,borderRadius:10,padding:"6px 10px"}}>
-                    <span style={{fontSize:10}}>⏱</span>
-                    <span style={{fontSize:11,fontWeight:700,color:heuresRestantes<2?"#DC2626":C.muted}}>
-                      {heuresRestantes<1?`Expire dans ${Math.round(heuresRestantes*60)} min`:`Expire dans ${Math.round(heuresRestantes)}h`}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          );
-        })()}
-        <div style={{height:8}}/>
-      </div>
-      <NavService a="home_service" go={go}/>
-    </div>
-  );
-};
-
-const ProfilService = ({go,goBack,userInfo={},seDeconnecter}) => {
-  const nomService = userInfo.nm && userInfo.nm.trim() ? userInfo.nm.trim() : "Service Public";
-  const statutCompte = userInfo.statut || "valide";
-  const s = STATUTS_INSTITUTION[statutCompte] || STATUTS_INSTITUTION.valide;
-  return (
-  <div className="scr on" style={{display:"flex"}}>
-    <div className="scrl">
-      <div style={{padding:"24px 24px 0"}}>
-        <p style={{fontFamily:"Sora,sans-serif",fontSize:22,fontWeight:800,color:C.ink,letterSpacing:"-.5px"}}>Mon profil</p>
-      </div>
-      <div style={{padding:"20px 20px 16px",display:"flex",flexDirection:"column",alignItems:"center",gap:10}}>
-        <div style={{width:80,height:80,borderRadius:"50%",background:"linear-gradient(135deg,#16A34A,#15803D)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-          <I n="building" s={36} c="#fff"/>
-        </div>
-        <p style={{fontFamily:"Sora,sans-serif",fontSize:18,fontWeight:800,color:C.ink,letterSpacing:"-.3px",textAlign:"center"}}>{nomService}</p>
-        {userInfo.typeService&&<p style={{fontSize:12,color:C.muted}}>{userInfo.typeService}</p>}
-        <span style={{fontSize:10,fontWeight:700,padding:"3px 10px",borderRadius:20,background:s.bg,color:s.txt,letterSpacing:".5px",display:"flex",alignItems:"center",gap:5}}>
-          <span style={{width:6,height:6,borderRadius:"50%",background:s.dot,animation:statutCompte==="valide"?"bk 2s ease infinite":"none"}}/>
-          {s.label.toUpperCase()}
-        </span>
-      </div>
-      <div className="pm">
-        {[
-          {ic:"user",lb:userInfo.responsable||"Responsable du compte"},
-          {ic:"phone",lb:userInfo.ph||"Non renseigné"},
-          {ic:"mail",lb:userInfo.mail||"Non renseigné"},
-          {ic:"pin",lb:userInfo.commune||"Non renseignée"},
-        ].map((it,i)=>(
-          <div key={i} style={{display:"flex",alignItems:"center",gap:12,background:"#fff",border:`1px solid ${C.border}`,borderRadius:14,padding:"14px 16px"}}>
-            <I n={it.ic} s={18} c={C.green}/>
-            <span style={{fontSize:14,fontWeight:500,color:C.ink}}>{it.lb}</span>
-          </div>
-        ))}
-        <div style={{height:8}}/>
-        {[
-          {ic:"settings",lb:"Paramètres du compte",sc:"parametres_service"},
-          {ic:"file",lb:"Conditions d'utilisation",sc:"cgu"},
-          {ic:"shield2",lb:"Politique de confidentialité",sc:"cgu"},
-        ].map((it,i)=>(
-          <button key={i} className="pmi" onClick={()=>it.sc&&go(it.sc)}>
-            <div style={{width:34,height:34,borderRadius:10,background:C.surf,display:"flex",alignItems:"center",justifyContent:"center"}}>
-              <I n={it.ic} s={17} c={C.muted}/>
-            </div>
-            <span style={{fontSize:14,fontWeight:600,color:C.ink,flex:1,textAlign:"left"}}>{it.lb}</span>
-            <I n="arrow" s={14} c={C.faint}/>
-          </button>
-        ))}
-        <div style={{height:4}}/>
-        <button className="btn btn-g" onClick={()=>seDeconnecter?seDeconnecter():go("splash")}>Se déconnecter</button>
-      </div>
-      <div style={{height:24}}/>
-    </div>
-    <NavService a="profil_service" go={go}/>
-  </div>
-  );
-};
-
-/* ── Paramètres du compte institutionnel ──────────────────────────────── */
-const ParametresService = ({go,goBack,userInfo={},setUserInfo}) => {
-  const [edit,setEdit]=useState(false);
-  const [draft,setDraft]=useState({
-    responsable:userInfo.responsable||"", ph:userInfo.ph||"",
-    mail:userInfo.mail||"", commune:userInfo.commune||"",
-  });
-  const [notifSon,setNotifSon]=useState(true);
-  const [notifPush,setNotifPush]=useState(true);
-  const [saved,setSaved]=useState(false);
-
-  const enregistrer=()=>{
-    setUserInfo&&setUserInfo(p=>({...p,...draft}));
-    setEdit(false);
-    setSaved(true);
-    playNotif();
-    setTimeout(()=>setSaved(false),2500);
-  };
-
-  return (
-    <div className="scr on" style={{display:"flex"}}>
-      <div className="scrl">
-        <div className="scrhdr">
-          <button className="bk" onClick={goBack}><I n="back" s={18} c={C.ink}/></button>
-          <p className="scrttl">Paramètres du compte</p>
-        </div>
-        <div className="pm">
-          {saved&&(
-            <div style={{background:C.greenL,border:"1px solid rgba(22,163,74,.25)",borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",gap:10}}>
-              <span style={{fontSize:18}}>✅</span>
-              <p style={{fontSize:13,fontWeight:700,color:C.green}}>Informations mises à jour</p>
-            </div>
-          )}
-
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-            <p className="fst" style={{marginTop:0,marginBottom:0}}>Informations du responsable</p>
-            {!edit&&(
-              <button onClick={()=>{setDraft({responsable:userInfo.responsable||"",ph:userInfo.ph||"",mail:userInfo.mail||"",commune:userInfo.commune||""});setEdit(true);}}
-                style={{fontSize:12,fontWeight:700,color:C.green,background:"none",border:"none",cursor:"pointer",fontFamily:"Plus Jakarta Sans"}}>
-                ✏️ Modifier
-              </button>
-            )}
-          </div>
-
-          {!edit?(
-            [
-              {ic:"user",lb:"Responsable",val:userInfo.responsable||"Non renseigné"},
-              {ic:"phone",lb:"Téléphone",val:userInfo.ph||"Non renseigné"},
-              {ic:"mail",lb:"Email",val:userInfo.mail||"Non renseigné"},
-              {ic:"pin",lb:"Commune",val:userInfo.commune||"Non renseignée"},
-            ].map((it,i)=>(
-              <div key={i} style={{display:"flex",alignItems:"center",gap:12,background:"#fff",border:`1px solid ${C.border}`,borderRadius:14,padding:"14px 16px"}}>
-                <I n={it.ic} s={18} c={C.green}/>
-                <div>
-                  <p style={{fontSize:10,fontWeight:700,color:C.faint,textTransform:"uppercase"}}>{it.lb}</p>
-                  <p style={{fontSize:14,fontWeight:500,color:C.ink}}>{it.val}</p>
-                </div>
-              </div>
-            ))
-          ):(
-            <div style={{background:"#fff",border:`1.5px solid ${C.green}`,borderRadius:16,padding:16,display:"flex",flexDirection:"column",gap:10}}>
-              <div className="if">
-                <I n="user" s={16} c={C.faint}/>
-                <input value={draft.responsable} onChange={e=>setDraft(p=>({...p,responsable:e.target.value}))} placeholder="Nom du responsable"/>
-              </div>
-              <div className="if">
-                <I n="phone" s={16} c={C.faint}/>
-                <input value={draft.ph} maxLength={10} onChange={e=>setDraft(p=>({...p,ph:e.target.value.replace(/\D/g,"").slice(0,10)}))} placeholder="Téléphone (10 chiffres)"/>
-              </div>
-              <div className="if">
-                <I n="mail" s={16} c={C.faint}/>
-                <input value={draft.mail} onChange={e=>setDraft(p=>({...p,mail:e.target.value}))} placeholder="Email officiel"/>
-              </div>
-              <div className="if">
-                <I n="pin" s={16} c={C.faint}/>
-                <input value={draft.commune} onChange={e=>setDraft(p=>({...p,commune:e.target.value}))} placeholder="Commune d'implantation"/>
-              </div>
-              <div style={{display:"flex",gap:8,marginTop:4}}>
-                <button className="btn btn-gr" style={{flex:1}} onClick={enregistrer}><I n="check" s={14} c="#fff"/>Enregistrer</button>
-                <button className="btn btn-g" style={{flex:1}} onClick={()=>setEdit(false)}>Annuler</button>
-              </div>
-            </div>
-          )}
-
-          <p className="fst">Notifications</p>
-          {[
-            {lb:"Son de notification",sub:"Jouer un son à chaque diffusion envoyée",val:notifSon,set:setNotifSon},
-            {lb:"Notifications push",sub:"Être notifié des signalements reçus",val:notifPush,set:setNotifPush},
-          ].map((it,i)=>(
-            <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#fff",border:`1px solid ${C.border}`,borderRadius:14,padding:"14px 16px"}}>
-              <div>
-                <p style={{fontSize:14,fontWeight:600,color:C.ink}}>{it.lb}</p>
-                <p style={{fontSize:11,color:C.muted,marginTop:2}}>{it.sub}</p>
-              </div>
-              <button className={`tsw ${it.val?"on":"off"}`} onClick={()=>{it.set(p=>!p);playNotif();}}>
-                <div className={`tth ${it.val?"on":"off"}`}/>
-              </button>
-            </div>
-          ))}
-
-          <p className="fst">Compte</p>
-          <button className="pmi" onClick={()=>go("cgu")}>
-            <div style={{width:34,height:34,borderRadius:10,background:C.surf,display:"flex",alignItems:"center",justifyContent:"center"}}><I n="file" s={17} c={C.muted}/></div>
-            <span style={{fontSize:14,fontWeight:600,color:C.ink,flex:1,textAlign:"left"}}>Conditions d'utilisation</span>
-            <I n="arrow" s={14} c={C.faint}/>
-          </button>
-          <div style={{height:4}}/>
-          <button className="btn btn-g" onClick={()=>go("splash")} style={{color:"#DC2626"}}>Supprimer ce compte institutionnel</button>
-          <div style={{height:20}}/>
-        </div>
-      </div>
-      <NavService a="profil_service" go={go}/>
     </div>
   );
 };
@@ -5024,13 +3275,12 @@ const Cgu = ({go,goBack}) => (
         <p style={{fontSize:11,color:C.muted,marginTop:4}}>Dernière mise à jour : Juin 2025</p>
       </div>
       {[
-        {t:"1. Objet de l'application",p:"ALERTE CI est une application mobile destinée aux résidents de Côte d'Ivoire, offrant des services de sécurité personnelle, de productivité et d'alertes publiques. L'application est disponible sur iOS et Android."},
+        {t:"1. Objet de l'application",p:"ALERTE CI est une application mobile destinée aux résidents de Côte d'Ivoire, offrant des services de sécurité personnelle en cas de violence ou de disparition. L'application est disponible sur iOS et Android."},
         {t:"2. Compte unique par appareil",p:"Chaque compte ALERTE CI est strictement lié à un seul appareil à la fois. Toute tentative de connexion simultanée sur deux appareils entraînera la déconnexion automatique du premier appareil."},
-        {t:"3. Forfaits et abonnements",p:"L'application propose un forfait gratuit donnant accès aux services Alerte Info et Alerte Violence, et un forfait annuel payant (10 000 FCFA/an ou 1 000 FCFA/mois) donnant accès à toutes les fonctionnalités. Le paiement s'effectue via Mobile Money, Wave CI ou carte bancaire."},
+        {t:"3. Forfaits et abonnements",p:"L'application propose un mois d'essai gratuit à la création du compte, donnant accès à Alerte Violence et Alerte Enlèvement. Passé ce délai, un abonnement est nécessaire pour continuer à y accéder (3 000 FCFA/an ou 1 000 FCFA/mois). Le paiement s'effectue via Mobile Money, Wave CI ou carte bancaire."},
         {t:"4. Utilisation responsable",p:"L'utilisateur s'engage à utiliser l'application de manière responsable. Tout abus, fausse alerte ou utilisation malveillante pourra entraîner la suspension du compte."},
-        {t:"5. Données personnelles et protection de la vie privée",p:"ALERTE CI collecte uniquement les données nécessaires au fonctionnement du service : nom, numéro de téléphone (10 chiffres CI), commune, email (facultatif) et localisation GPS — cette dernière n'étant activée que lors d'un signalement d'urgence ou d'un partage de position volontaire (Alerte Enlèvement). Ces données sont conservées de façon sécurisée et ne sont jamais vendues à des tiers ni utilisées à des fins publicitaires. Elles sont partagées uniquement avec les services publics concernés par un signalement, et avec les contacts de confiance explicitement désignés par l'utilisateur. Conformément à la réglementation ivoirienne sur la protection des données à caractère personnel, l'utilisateur dispose à tout moment d'un droit d'accès, de rectification et de suppression de ses données, exerçable depuis Mon Profil ou auprès du support ALERTE CI. Les notes vocales et signalements expirent et sont supprimés automatiquement après 24 heures, sauf nécessité légale de conservation plus longue."},
-        {t:"6. Services partenaires",p:"L'application est connectée à des services publics : SODEXAM (météo), Ministère de la Construction (effondrements) et Corps des Pompiers (incendies). ALERTE CI n'est pas responsable des délais d'intervention."},
-        {t:"8. Modification des CGU",p:"ALERTE CI se réserve le droit de modifier les présentes conditions à tout moment. Les utilisateurs seront notifiés par notification push en cas de modification substantielle."},
+        {t:"5. Données personnelles et protection de la vie privée",p:"ALERTE CI collecte uniquement les données nécessaires au fonctionnement du service : nom, numéro de téléphone (10 chiffres CI), commune, email (facultatif) et localisation GPS — cette dernière n'étant activée que lors d'un signalement d'urgence ou d'un partage de position volontaire (Alerte Enlèvement). Ces données sont conservées de façon sécurisée et ne sont jamais vendues à des tiers ni utilisées à des fins publicitaires. Elles sont partagées uniquement avec les contacts de confiance explicitement désignés par l'utilisateur. Conformément à la réglementation ivoirienne sur la protection des données à caractère personnel, l'utilisateur dispose à tout moment d'un droit d'accès, de rectification et de suppression de ses données, exerçable depuis Mon Profil ou auprès du support ALERTE CI. Les notes vocales et signalements expirent et sont supprimés automatiquement après 24 heures, sauf nécessité légale de conservation plus longue."},
+        {t:"6. Modification des CGU",p:"ALERTE CI se réserve le droit de modifier les présentes conditions à tout moment. Les utilisateurs seront notifiés par notification push en cas de modification substantielle."},
       ].map((s,i)=>(
         <div key={i} style={{marginBottom:20}}>
           <p style={{fontSize:14,fontWeight:700,color:C.ink,marginBottom:8}}>{s.t}</p>
@@ -5046,12 +3296,13 @@ const Faq = ({go,goBack}) => {
   const [op,setOp]=useState(null);
   const faqs=[
     {q:"Comment fonctionne l'Alerte Violence ?",a:"Vous enregistrez un signal vocal unique dans l'app. Quand l'application détecte ce signal, elle déclenche une alarme et notifie vos 3 contacts d'urgence simultanément."},
-    {q:"Mes contacts doivent-ils avoir l'application ?",a:"Pour Voleur Téléphones, vos contacts autorisés doivent avoir un abonnement Premium actif. Pour l'Alerte Violence, ils reçoivent une simple notification."},
+    {q:"Mes contacts doivent-ils avoir l'application ?",a:"Pour l'Alerte Violence et l'Alerte Enlèvement, vos contacts reçoivent une simple notification — ils n'ont pas besoin d'installer l'application."},
     {q:"Peut-on avoir 2 appareils connectés en même temps ?",a:"Non. ALERTE CI est limité à 1 appareil par compte. Si vous vous connectez sur un nouvel appareil, l'ancien sera automatiquement déconnecté."},
-    {q:"Comment payer l'abonnement annuel ?",a:"Le paiement s'effectue directement dans l'application via Mobile Money (Orange, MTN), Wave CI, Moov Money ou carte bancaire Visa/Mastercard. Forfait annuel : 10 000 FCFA/an ou 1 000 FCFA/mois."},
+    {q:"L'essai gratuit, comment ça marche ?",a:"Dès la création de votre compte, vous bénéficiez d'un mois d'accès Premium gratuit à Alerte Violence et Alerte Enlèvement. Passé ce délai, un abonnement est nécessaire pour continuer à y accéder."},
+    {q:"Comment payer l'abonnement annuel ?",a:"Le paiement s'effectue directement dans l'application via Mobile Money (Orange, MTN), Wave CI, Moov Money ou carte bancaire Visa/Mastercard. Forfait annuel : 3 000 FCFA/an (ou 1 000 FCFA/mois)."},
     {q:"Les numéros CI sont à combien de chiffres ?",a:"Les numéros ivoiriens sont à 10 chiffres (ex: 0700000000). L'application accepte uniquement les formats valides à 10 chiffres."},
-    {q:"La localisation GPS est-elle toujours active ?",a:"Non. La localisation GPS n'est activée que lors de l'envoi d'un signalement (Effondrement ou Incendie). Elle est obligatoire dans ce cas pour permettre une intervention rapide."},
-    {q:"L'application fonctionne-t-elle sans connexion ?",a:"Certaines fonctionnalités nécessitent internet (alertes, météo). L'alerte violence peut fonctionner en mode dégradé via SMS si configuré."},
+    {q:"La localisation GPS est-elle toujours active ?",a:"Non. La localisation GPS n'est activée que lors d'une Alerte Violence ou d'un partage de position (Alerte Enlèvement)."},
+    {q:"L'application fonctionne-t-elle sans connexion ?",a:"Certaines fonctionnalités nécessitent internet. L'alerte violence peut fonctionner en mode dégradé via SMS si configuré."},
     {q:"Comment contacter le support ALERTE CI ?",a:"Via la rubrique 'Aide & Support' dans votre profil, par email ou via notre WhatsApp officiel disponible sur la page À propos."},
   ];
   return (
@@ -5135,7 +3386,7 @@ const Profil = ({go,goBack,userInfo={},setUserInfo,plan="gratuit",setPlan,seDeco
                 <span style={{fontSize:24}}>⭐</span>
                 <div style={{flex:1,textAlign:"left"}}>
                   <p style={{fontSize:14,fontWeight:800,color:C.ink}}>Premium Annuel</p>
-                  <p style={{fontSize:12,color:C.muted,marginTop:2}}>Planning · Alerte Enlèvement · 10 000 FCFA/an</p>
+                  <p style={{fontSize:12,color:C.muted,marginTop:2}}>Alerte Violence · Alerte Enlèvement · 3 000 FCFA/an</p>
                 </div>
                 {planActif==="premium"&&<span style={{fontSize:10,fontWeight:800,color:C.orange,background:C.orangeL,padding:"3px 8px",borderRadius:20}}>Actif</span>}
                 <I n="arrow" s={14} c={C.faint}/>
@@ -5164,7 +3415,7 @@ const Profil = ({go,goBack,userInfo={},setUserInfo,plan="gratuit",setPlan,seDeco
                 <span style={{fontSize:24}}>🟢</span>
                 <div style={{flex:1,textAlign:"left"}}>
                   <p style={{fontSize:14,fontWeight:800,color:C.ink}}>Forfait Gratuit</p>
-                  <p style={{fontSize:12,color:C.muted,marginTop:2}}>Alerte Violence + Alerte Info · 0 FCFA</p>
+                  <p style={{fontSize:12,color:C.muted,marginTop:2}}>Alerte Violence et Alerte Enlèvement verrouillées · 0 FCFA</p>
                 </div>
                 {planActif==="gratuit"&&<span style={{fontSize:10,fontWeight:800,color:C.green,background:C.greenL,padding:"3px 8px",borderRadius:20}}>Actif</span>}
               </button>
@@ -5352,425 +3603,6 @@ const Parametres = ({go,goBack}) => {
   );
 };
 
-/* ── STORE PARTAGÉ DES ALERTES SERVICES PUBLICS ──────────────────────────────
-   Toute alerte diffusée par un Service Public (HomeService) est ajoutée ici.
-   Elle apparaît alors automatiquement dans :
-     - l'écran Alerte Info (Info)
-     - la section "Alertes & Informations" de l'Accueil (AlertesInfoFeed)
-   Chaque alerte possède un timestamp (ts) et disparaît automatiquement
-   24h après sa création (filtrage par expiration, pas de suppression manuelle). ── */
-const DUREE_VIE_ALERTE_MS = 24*60*60*1000; // 24 heures
-
-const alerteEstValide = (a) => (Date.now() - a.ts) < DUREE_VIE_ALERTE_MS;
-
-/* Alertes officielles de démonstration, déjà en place au démarrage de l'app.
-   Elles utilisent aussi un timestamp réel et disparaîtront après 24h comme les autres. */
-const formatHeureRelative = (ts) => {
-  const diffMs = Date.now()-ts;
-  const min = Math.floor(diffMs/60000);
-  if(min<1) return "À l'instant";
-  if(min<60) return `Il y a ${min} min`;
-  const h = Math.floor(min/60);
-  if(h<24) return `Il y a ${h}h`;
-  return "Hier";
-};
-
-/* ══════════════════════════════════════════════════════════════════════════════
-   TABLEAU DE BORD ADMINISTRATEUR
-   Permet de valider ou refuser chaque compte institutionnel créé, et de
-   gérer la liste des types de service proposés à l'inscription. Une fois
-   un compte validé ici, son statut passe à "valide" : la diffusion
-   d'informations devient possible côté Service Public, et ses publications
-   apparaissent automatiquement chez les citoyens dans Alerte Info.
-══════════════════════════════════════════════════════════════════════════════ */
-/* ── Appel de l'Edge Function admin-api ────────────────────────────────────
-   Chaque appel envoie numéro + code d'accès admin ; la fonction (côté
-   serveur, seule détentrice de la clé service_role Supabase) revérifie ces
-   identifiants à CHAQUE requête avant d'exécuter l'action. Rien de sensible
-   ne transite ni ne reste dans le navigateur. ── */
-async function adminApi(session, action, payload){
-  try{
-    const r = await fetch(ADMIN_API_URL, {
-      method:"POST",
-      headers:{"Content-Type":"application/json","apikey":SB_KEY},
-      body:JSON.stringify({telephone:session.ph, code:session.code, action, payload}),
-    });
-    const d = await r.json().catch(()=>({}));
-    if(!r.ok) return { error: d.error || `Erreur (${r.status})` };
-    return d;
-  }catch(e){ return { error:"Réseau indisponible." }; }
-}
-
-/* ── Portail d'accès administrateur ────────────────────────────────────────
-   Auparavant, l'écran Administration s'ouvrait sans aucune vérification :
-   n'importe qui découvrant le bouton caché y accédait directement. Ce
-   portail impose désormais le numéro + code à 6 chiffres de la table
-   `admins`, vérifié côté serveur (voir supabase-edge-function/admin-api). ── */
-const AdminGate = ({onAuth}) => {
-  const [ph,setPh]=useState("");
-  const [code,setCode]=useState("");
-  const [err,setErr]=useState("");
-  const [loading,setLoading]=useState(false);
-
-  const valider=async()=>{
-    if(ph.length<10||code.length<6){setErr("Numéro et code administrateur requis.");return;}
-    setLoading(true); setErr("");
-    const res = await adminApi({ph,code}, "login", {});
-    setLoading(false);
-    if(res.error){ setErr(res.error==="CODE_INVALIDE"?"Numéro ou code incorrect.":res.error); return; }
-    onAuth({ph,code});
-  };
-
-  return (
-    <div className="scr on" style={{display:"flex",flexDirection:"column"}}>
-      <div style={{background:"linear-gradient(160deg,#1C1917,#292524)",padding:"36px 28px 28px",display:"flex",flexDirection:"column",alignItems:"center",gap:10}}>
-        <div style={{width:52,height:52,borderRadius:16,background:"rgba(249,115,22,.15)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-          <I n="lock" s={26} c={C.orange}/>
-        </div>
-        <p style={{fontFamily:"Sora,sans-serif",fontSize:18,fontWeight:800,color:"#fff"}}>Administration ALERTE CI</p>
-        <p style={{fontSize:12,color:"rgba(255,255,255,.5)",textAlign:"center"}}>Accès réservé — numéro et code administrateur</p>
-      </div>
-      <div className="isc" style={{flex:1,paddingTop:20,display:"flex",flexDirection:"column",gap:10}}>
-        <div className="if" style={{border:`1.5px solid ${ph.length===10?"rgba(22,163,74,.4)":C.border}`}}>
-          <I n="phone" s={18} c={C.faint}/>
-          <input type="tel" value={ph} onChange={e=>{setPh(saneTel(e.target.value));setErr("");}} placeholder="Numéro administrateur (10 chiffres)" maxLength={10}/>
-        </div>
-        <div className="if" style={{border:`1.5px solid ${code.length===6?"rgba(22,163,74,.4)":C.border}`}}>
-          <I n="lock" s={18} c={C.faint}/>
-          <input type="password" inputMode="numeric" value={code} onChange={e=>{setCode(saneCode(e.target.value));setErr("");}} placeholder="Code administrateur (6 chiffres)" maxLength={6}/>
-        </div>
-        {err&&<p style={{fontSize:12,color:"#DC2626",fontWeight:600,paddingLeft:4}}>{err}</p>}
-        <button className="btn btn-p" style={{opacity:ph.length===10&&code.length===6&&!loading?1:.5}} disabled={ph.length<10||code.length<6||loading} onClick={valider}>
-          {loading?"Vérification...":"Entrer"} <I n="arrow" s={16} c="#fff"/>
-        </button>
-      </div>
-    </div>
-  );
-};
-
-const AdminDashboard = ({go,goBack,comptesInscrits=[],validerCompteInstitution,typesServiceDisponibles=[],ajouterTypeService,retirerTypeService}) => {
-  const [adminSession,setAdminSession]=useState(null);
-  const [tab,setTab]=useState(FEATURES.institutionSignup?"comptes":"utilisateurs"); // "comptes" | "utilisateurs" | "forfaits" | "types" | "admins"
-  const [nouveauType,setNouveauType]=useState("");
-  const [utilisateurs,setUtilisateurs]=useState([]);
-  const [forfaits,setForfaits]=useState([]);
-  const [bonusTel,setBonusTel]=useState("");
-  const [bonusJours,setBonusJours]=useState("30");
-  const [bonusMotif,setBonusMotif]=useState("");
-  const [adminMsg,setAdminMsg]=useState("");
-  const [admins,setAdmins]=useState([]);
-  const [nvAdminNom,setNvAdminNom]=useState("");
-  const [nvAdminTel,setNvAdminTel]=useState("");
-  const [nvAdminCode,setNvAdminCode]=useState("");
-  const [nvAdminRole,setNvAdminRole]=useState("editeur");
-  const [adminAdminMsg,setAdminAdminMsg]=useState("");
-
-  const chargerUtilisateurs=async()=>{
-    const res = await adminApi(adminSession, "list_users", {});
-    if(!res.error) setUtilisateurs(res.utilisateurs||[]);
-  };
-  const chargerForfaits=async()=>{
-    const res = await adminApi(adminSession, "list_forfaits", {});
-    if(!res.error) setForfaits(res.forfaits||[]);
-  };
-  const chargerAdmins=async()=>{
-    const res = await adminApi(adminSession, "list_admins", {});
-    if(!res.error) setAdmins(res.admins||[]);
-  };
-  useEffect(()=>{
-    if(!adminSession) return;
-    if(tab==="utilisateurs") chargerUtilisateurs();
-    if(tab==="forfaits") chargerForfaits();
-    if(tab==="admins") chargerAdmins();
-  },[adminSession, tab]);
-
-  const basculerBlocage=async(telephone,bloque)=>{
-    const res = await adminApi(adminSession, "toggle_block", {telephone, bloque:!bloque});
-    if(!res.error) chargerUtilisateurs();
-  };
-  const majPrixForfait=async(slug,prix)=>{
-    const res = await adminApi(adminSession, "update_forfait", {slug, prix:Number(prix)});
-    if(!res.error){ setAdminMsg("Forfait mis à jour ✓"); chargerForfaits(); }
-  };
-  const offrirBonus=async()=>{
-    setAdminMsg("");
-    if(bonusTel.length!==10||!bonusJours){ setAdminMsg("Numéro (10 chiffres) et durée requis."); return; }
-    const res = await adminApi(adminSession, "grant_bonus", {telephone:bonusTel, jours:Number(bonusJours), motif:saneTxt(bonusMotif,140)});
-    if(res.error){ setAdminMsg(res.error); return; }
-    setAdminMsg(`Bonus de ${bonusJours} jours offert au ${bonusTel} ✓`);
-    setBonusTel(""); setBonusMotif("");
-  };
-  const creerAdmin=async()=>{
-    setAdminAdminMsg("");
-    if(!nvAdminNom.trim()||nvAdminTel.length!==10||nvAdminCode.length!==6){
-      setAdminAdminMsg("Nom, numéro (10 chiffres) et code (6 chiffres) requis."); return;
-    }
-    const res = await adminApi(adminSession, "create_admin", {
-      nom:saneTxt(nvAdminNom,80), telephone:nvAdminTel, code:nvAdminCode, role:nvAdminRole,
-    });
-    if(res.error){ setAdminAdminMsg(res.error); return; }
-    setAdminAdminMsg(`Administrateur ${nvAdminNom} créé ✓`);
-    setNvAdminNom(""); setNvAdminTel(""); setNvAdminCode(""); setNvAdminRole("editeur");
-    chargerAdmins();
-  };
-  const basculerAdminActif=async(telephone,actif)=>{
-    const res = await adminApi(adminSession, "toggle_admin", {telephone, actif:!actif});
-    if(!res.error) chargerAdmins();
-  };
-
-  if(!adminSession) return <AdminGate onAuth={setAdminSession}/>;
-
-  const institutions = comptesInscrits.filter(c=>c.plan==="institution");
-  const enAttente = institutions.filter(c=>c.statut==="en_attente");
-  const traites = institutions.filter(c=>c.statut!=="en_attente");
-
-  return (
-    <div className="scr on" style={{display:"flex"}}>
-      <div className="scrl">
-        <div className="scrhdr">
-          <button className="bk" onClick={goBack}><I n="back" s={18} c={C.ink}/></button>
-          <p className="scrttl">Administration</p>
-        </div>
-
-        <div style={{padding:"16px 20px 0",display:"flex",gap:8,overflowX:"auto"}}>
-          {[
-            ...(FEATURES.institutionSignup?[{id:"comptes",lb:`Institutions (${enAttente.length})`}]:[]),
-            {id:"utilisateurs",lb:"Utilisateurs"},
-            {id:"forfaits",lb:"Forfaits & bonus"},
-            ...(FEATURES.institutionSignup?[{id:"types",lb:"Types de service"}]:[]),
-            {id:"admins",lb:"Administrateurs"},
-          ].map(t=>(
-            <button key={t.id} onClick={()=>setTab(t.id)} style={{flexShrink:0,padding:"10px 14px",borderRadius:12,border:"none",cursor:"pointer",fontFamily:"Plus Jakarta Sans",fontSize:12,fontWeight:700,whiteSpace:"nowrap",background:tab===t.id?C.ink:"#fff",color:tab===t.id?"#fff":C.muted,boxShadow:tab===t.id?"0 4px 14px rgba(0,0,0,.15)":"none",border:tab===t.id?"none":`1px solid ${C.border}`}}>
-              {t.lb}
-            </button>
-          ))}
-        </div>
-
-        {tab==="comptes"&&(
-          <div style={{padding:"16px 20px",display:"flex",flexDirection:"column",gap:10}}>
-            {institutions.length===0&&(
-              <div style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:18,padding:"28px 20px",textAlign:"center"}}>
-                <p style={{fontSize:28,marginBottom:8}}>🏛️</p>
-                <p style={{fontSize:13,fontWeight:700,color:C.ink,marginBottom:4}}>Aucun compte institutionnel</p>
-                <p style={{fontSize:12,color:C.muted,lineHeight:1.5}}>Les inscriptions de services publics apparaîtront ici automatiquement.</p>
-              </div>
-            )}
-
-            {enAttente.length>0&&(
-              <p style={{fontSize:11,fontWeight:700,color:C.orange,textTransform:"uppercase",letterSpacing:".5px",marginTop:4}}>À examiner</p>
-            )}
-            {enAttente.map(c=>(
-              <div key={c.id} className="si" style={{background:"#fff",border:"1.5px solid rgba(249,115,22,.3)",borderRadius:18,padding:"14px 16px"}}>
-                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-                  <div style={{width:38,height:38,borderRadius:12,background:C.orangeL,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                    <I n="building" s={18} c={C.orange}/>
-                  </div>
-                  <div style={{flex:1,minWidth:0}}>
-                    <p style={{fontSize:14,fontWeight:800,color:C.ink}}>{c.nm}</p>
-                    <p style={{fontSize:11,color:C.muted}}>{c.typeService} · {c.commune}</p>
-                  </div>
-                  <span style={{fontSize:9,fontWeight:800,color:C.orange,background:C.orangeL,padding:"3px 8px",borderRadius:20,flexShrink:0}}>EN EXAMEN</span>
-                </div>
-                <div style={{background:C.surf,borderRadius:12,padding:"10px 12px",marginBottom:10,display:"flex",flexDirection:"column",gap:4}}>
-                  <p style={{fontSize:11,color:C.muted}}><strong style={{color:C.ink}}>Responsable :</strong> {c.responsable||"—"}</p>
-                  <p style={{fontSize:11,color:C.muted}}><strong style={{color:C.ink}}>Téléphone :</strong> {c.ph}</p>
-                  {c.mail&&<p style={{fontSize:11,color:C.muted}}><strong style={{color:C.ink}}>Email :</strong> {c.mail}</p>}
-                </div>
-                <div style={{display:"flex",gap:8}}>
-                  <button onClick={()=>validerCompteInstitution&&validerCompteInstitution(c.id,"valide")}
-                    style={{flex:1,padding:"9px",background:C.green,border:"none",borderRadius:10,cursor:"pointer",fontSize:12,fontWeight:700,color:"#fff",fontFamily:"Plus Jakarta Sans",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
-                    <I n="check" s={14} c="#fff"/>Valider
-                  </button>
-                  <button onClick={()=>validerCompteInstitution&&validerCompteInstitution(c.id,"refuse")}
-                    style={{flex:1,padding:"9px",background:"#FFF1F2",border:"none",borderRadius:10,cursor:"pointer",fontSize:12,fontWeight:700,color:"#DC2626",fontFamily:"Plus Jakarta Sans"}}>
-                    Refuser
-                  </button>
-                </div>
-              </div>
-            ))}
-
-            {traites.length>0&&(
-              <p style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".5px",marginTop:8}}>Déjà traités</p>
-            )}
-            {traites.map(c=>{
-              const s = STATUTS_INSTITUTION[c.statut] || STATUTS_INSTITUTION.valide;
-              return (
-                <div key={c.id} style={{display:"flex",alignItems:"center",gap:10,background:"#fff",border:`1px solid ${C.border}`,borderRadius:14,padding:"12px 14px"}}>
-                  <div style={{width:32,height:32,borderRadius:10,background:s.bg,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                    <I n="building" s={16} c={s.txt}/>
-                  </div>
-                  <div style={{flex:1,minWidth:0}}>
-                    <p style={{fontSize:13,fontWeight:700,color:C.ink}}>{c.nm}</p>
-                    <p style={{fontSize:10,color:C.muted}}>{c.typeService}</p>
-                  </div>
-                  <div style={{display:"flex",alignItems:"center",gap:6}}>
-                    <span style={{fontSize:9,fontWeight:800,color:s.txt,background:s.bg,padding:"3px 8px",borderRadius:20}}>{s.badge}</span>
-                    {c.statut==="refuse"&&(
-                      <button onClick={()=>validerCompteInstitution&&validerCompteInstitution(c.id,"valide")}
-                        style={{fontSize:10,fontWeight:700,color:C.green,background:C.greenL,border:"none",borderRadius:8,padding:"4px 8px",cursor:"pointer",fontFamily:"Plus Jakarta Sans"}}>
-                        Revalider
-                      </button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {tab==="utilisateurs"&&(
-          <div style={{padding:"16px 20px",display:"flex",flexDirection:"column",gap:10}}>
-            <p style={{fontSize:12,color:C.muted,lineHeight:1.5}}>Comptes utilisateurs enregistrés sur le serveur national. Bloquer un compte empêche immédiatement toute connexion, y compris depuis un appareil déjà connecté.</p>
-            {utilisateurs.length===0&&(
-              <div style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:18,padding:"28px 20px",textAlign:"center"}}>
-                <p style={{fontSize:28,marginBottom:8}}>👥</p>
-                <p style={{fontSize:13,fontWeight:700,color:C.ink,marginBottom:4}}>Aucun utilisateur chargé</p>
-                <p style={{fontSize:12,color:C.muted,lineHeight:1.5}}>Les comptes créés depuis n'importe quel téléphone apparaîtront ici.</p>
-              </div>
-            )}
-            {utilisateurs.map(u=>{
-              const enEss = essaiEnCours(u.essaiFin?{essaiFin:u.essaiFin}:{});
-              const abo = abonnementActif(u.premiumExpire?{premiumExpire:u.premiumExpire}:{});
-              return (
-                <div key={u.telephone} style={{background:"#fff",border:`1px solid ${u.bloque?"rgba(220,38,38,.35)":C.border}`,borderRadius:16,padding:"12px 14px"}}>
-                  <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
-                    <div style={{width:36,height:36,borderRadius:10,background:u.bloque?"#FFF1F2":C.orangeL,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                      <I n="user" s={16} c={u.bloque?"#DC2626":C.orange}/>
-                    </div>
-                    <div style={{flex:1,minWidth:0}}>
-                      <p style={{fontSize:13,fontWeight:800,color:C.ink}}>{u.nom||"—"}</p>
-                      <p style={{fontSize:11,color:C.muted}}>{u.telephone}</p>
-                    </div>
-                    <span style={{fontSize:9,fontWeight:800,padding:"3px 8px",borderRadius:20,background:u.bloque?"#FFF1F2":abo?"#F0FDF4":enEss?C.orangeL:"#F5F5F4",color:u.bloque?"#DC2626":abo?C.green:enEss?C.orange:C.muted}}>
-                      {u.bloque?"BLOQUÉ":abo?"PREMIUM":enEss?"ESSAI AKWABA":"EXPIRÉ"}
-                    </span>
-                  </div>
-                  <button onClick={()=>basculerBlocage(u.telephone,u.bloque)}
-                    style={{width:"100%",padding:"9px",background:u.bloque?C.green:"#FFF1F2",border:"none",borderRadius:10,cursor:"pointer",fontSize:12,fontWeight:700,color:u.bloque?"#fff":"#DC2626",fontFamily:"Plus Jakarta Sans"}}>
-                    {u.bloque?"Débloquer ce compte":"Bloquer ce compte"}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {tab==="forfaits"&&(
-          <div style={{padding:"16px 20px",display:"flex",flexDirection:"column",gap:10}}>
-            <p className="fst" style={{margin:"0 0 4px"}}>Forfaits</p>
-            {forfaits.map(f=>(
-              <div key={f.slug} style={{display:"flex",alignItems:"center",gap:10,background:"#fff",border:`1px solid ${C.border}`,borderRadius:14,padding:"12px 14px"}}>
-                <div style={{flex:1,minWidth:0}}>
-                  <p style={{fontSize:13,fontWeight:700,color:C.ink}}>{f.nom}</p>
-                  <p style={{fontSize:10,color:C.muted}}>{f.duree_jours?`${f.duree_jours} jours`:"Sans durée"}</p>
-                </div>
-                <input type="number" defaultValue={f.prix} onBlur={e=>majPrixForfait(f.slug,e.target.value)}
-                  style={{width:90,padding:"8px 10px",borderRadius:10,border:`1.5px solid ${C.border}`,textAlign:"right",fontFamily:"Plus Jakarta Sans",fontWeight:700,fontSize:13,color:C.ink}}/>
-                <span style={{fontSize:11,color:C.muted}}>FCFA</span>
-              </div>
-            ))}
-            {forfaits.length===0&&<p style={{fontSize:12,color:C.faint,textAlign:"center",padding:"12px 0"}}>Chargement des forfaits...</p>}
-
-            <p className="fst">Offrir un bonus premium</p>
-            <div className="ig">
-              <div className="if"><I n="phone" s={16} c={C.faint}/>
-                <input type="tel" value={bonusTel} onChange={e=>setBonusTel(saneTel(e.target.value))} placeholder="Numéro (10 chiffres)" maxLength={10}/>
-              </div>
-              <div className="if"><I n="calendar" s={16} c={C.faint}/>
-                <input type="number" value={bonusJours} onChange={e=>setBonusJours(e.target.value.replace(/\D/g,"").slice(0,4))} placeholder="Durée du bonus (jours)"/>
-              </div>
-              <div className="if"><I n="star" s={16} c={C.faint}/>
-                <input type="text" value={bonusMotif} onChange={e=>setBonusMotif(e.target.value)} placeholder="Motif (optionnel)"/>
-              </div>
-            </div>
-            <button onClick={offrirBonus} style={{padding:"12px",borderRadius:12,border:"none",cursor:"pointer",background:C.green,color:"#fff",fontFamily:"Plus Jakarta Sans",fontSize:13,fontWeight:700}}>
-              Offrir le bonus
-            </button>
-            {adminMsg&&<p style={{fontSize:12,color:C.muted,textAlign:"center"}}>{adminMsg}</p>}
-          </div>
-        )}
-
-        {tab==="admins"&&(
-          <div style={{padding:"16px 20px",display:"flex",flexDirection:"column",gap:10}}>
-            <p style={{fontSize:12,color:C.muted,lineHeight:1.5}}>Créez un nouvel accès administrateur (numéro + code à 6 chiffres). Le code est haché immédiatement côté serveur, jamais stocké en clair.</p>
-            <div className="ig">
-              <div className="if"><I n="user" s={16} c={C.faint}/>
-                <input type="text" value={nvAdminNom} onChange={e=>setNvAdminNom(e.target.value)} placeholder="Nom de l'administrateur"/>
-              </div>
-              <div className="if"><I n="phone" s={16} c={C.faint}/>
-                <input type="tel" value={nvAdminTel} onChange={e=>setNvAdminTel(saneTel(e.target.value))} placeholder="Numéro (10 chiffres)" maxLength={10}/>
-              </div>
-              <div className="if"><I n="lock" s={16} c={C.faint}/>
-                <input type="password" inputMode="numeric" value={nvAdminCode} onChange={e=>setNvAdminCode(saneCode(e.target.value))} placeholder="Code d'accès (6 chiffres)" maxLength={6}/>
-              </div>
-              <div className="if">
-                <I n="star" s={16} c={C.faint}/>
-                <select value={nvAdminRole} onChange={e=>setNvAdminRole(e.target.value)} style={{flex:1,border:"none",outline:"none",background:"transparent",fontFamily:"'Plus Jakarta Sans',sans-serif",fontSize:15,fontWeight:500,color:C.ink,appearance:"none"}}>
-                  <option value="editeur">Éditeur</option>
-                  <option value="super">Super administrateur</option>
-                </select>
-              </div>
-            </div>
-            <button onClick={creerAdmin} style={{padding:"12px",borderRadius:12,border:"none",cursor:"pointer",background:C.ink,color:"#fff",fontFamily:"Plus Jakarta Sans",fontSize:13,fontWeight:700}}>
-              Créer l'administrateur
-            </button>
-            {adminAdminMsg&&<p style={{fontSize:12,color:C.muted,textAlign:"center"}}>{adminAdminMsg}</p>}
-
-            <p className="fst">Administrateurs existants</p>
-            {admins.map(a=>(
-              <div key={a.telephone} style={{display:"flex",alignItems:"center",gap:10,background:"#fff",border:`1px solid ${C.border}`,borderRadius:14,padding:"12px 14px"}}>
-                <div style={{flex:1,minWidth:0}}>
-                  <p style={{fontSize:13,fontWeight:700,color:C.ink}}>{a.nom}</p>
-                  <p style={{fontSize:10,color:C.muted}}>{a.telephone} · {a.role==="super"?"Super administrateur":"Éditeur"}</p>
-                </div>
-                <button onClick={()=>basculerAdminActif(a.telephone,a.actif)}
-                  style={{fontSize:11,fontWeight:700,padding:"6px 10px",borderRadius:8,border:"none",cursor:"pointer",fontFamily:"Plus Jakarta Sans",background:a.actif?"#FFF1F2":C.greenL,color:a.actif?"#DC2626":C.green}}>
-                  {a.actif?"Désactiver":"Réactiver"}
-                </button>
-              </div>
-            ))}
-            {admins.length===0&&<p style={{fontSize:12,color:C.faint,textAlign:"center",padding:"12px 0"}}>Chargement...</p>}
-          </div>
-        )}
-
-        {tab==="types"&&(
-          <div style={{padding:"16px 20px",display:"flex",flexDirection:"column",gap:10}}>
-            <p style={{fontSize:12,color:C.muted,lineHeight:1.5}}>Ces types de service apparaissent dans la liste déroulante de l'inscription institutionnelle.</p>
-            <div style={{display:"flex",gap:8}}>
-              <div className="if" style={{flex:1,marginBottom:0}}>
-                <I n="plus" s={16} c={C.faint}/>
-                <input value={nouveauType} onChange={e=>setNouveauType(e.target.value)}
-                  onKeyDown={e=>{if(e.key==="Enter"){ajouterTypeService&&ajouterTypeService(nouveauType);setNouveauType("");}}}
-                  placeholder="Nouveau type de service..."/>
-              </div>
-              <button onClick={()=>{ajouterTypeService&&ajouterTypeService(nouveauType);setNouveauType("");}}
-                style={{padding:"0 16px",borderRadius:12,border:"none",cursor:"pointer",background:C.ink,color:"#fff",fontFamily:"Plus Jakarta Sans",fontSize:13,fontWeight:700,flexShrink:0}}>
-                Ajouter
-              </button>
-            </div>
-            <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:4}}>
-              {typesServiceDisponibles.map((t,i)=>(
-                <div key={i} style={{display:"flex",alignItems:"center",gap:10,background:"#fff",border:`1px solid ${C.border}`,borderRadius:14,padding:"12px 14px"}}>
-                  <I n="star" s={16} c={C.muted}/>
-                  <span style={{flex:1,fontSize:13,fontWeight:600,color:C.ink}}>{t}</span>
-                  <button onClick={()=>retirerTypeService&&retirerTypeService(t)}
-                    style={{width:28,height:28,borderRadius:8,border:"none",cursor:"pointer",background:"#FFF1F2",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                    🗑️
-                  </button>
-                </div>
-              ))}
-              {typesServiceDisponibles.length===0&&(
-                <p style={{fontSize:12,color:C.faint,textAlign:"center",padding:"20px 0"}}>Aucun type de service disponible. Ajoutez-en au moins un.</p>
-              )}
-            </div>
-          </div>
-        )}
-        <div style={{height:24}}/>
-      </div>
-    </div>
-  );
-};
-
 export default function AlerteCI() {
   const [history,setHistory]=useState(["splash"]);
   const screen=history[history.length-1];
@@ -5806,186 +3638,39 @@ export default function AlerteCI() {
     const t=setTimeout(()=>initialiserPush(userInfo.ph), 5000);
     return ()=>clearTimeout(t);
   },[userInfo.ph]);
-  /* ── Position « toujours active » (rubrique Enlèvement) ──────────────────
-     Démarre le suivi natif en arrière-plan dès la connexion (institution
-     exclue — non concernée), sans jamais pousser la position à personne :
-     elle n'est consultable que via une recherche autorisée par numéro (voir
-     Enlevement + supabase-edge-function/localiser-contact). Ne fait rien si
-     la coque n'a pas le plugin (ex. aperçu navigateur). */
-  useEffect(()=>{
-    if(!userInfo.ph || userInfo.plan==="institution") return;
-    const t=setTimeout(()=>{
-      try{
-        const BL=window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.BgLocation;
-        if(BL) enchainerNatif(()=>BL.start({phone:userInfo.ph}));
-      }catch(e){}
-    }, 6000);
-    return ()=>clearTimeout(t);
-  },[userInfo.ph]);
 
-  /* Rubriques masquées pour cette version (voir FEATURES) : toute tentative
-     de navigation vers l'un de ces écrans est silencieusement redirigée vers
-     l'Accueil, au cas où un lien interne oublié y pointerait encore. */
-  const ecransMasques = new Set([
-    ...(FEATURES.planning?[]:["planning"]),
-    ...(FEATURES.alerteInfo?[]:["info"]),
-    ...(FEATURES.servicesPublics?[]:SERVICES_PUBLICS_CONFIG.map(s=>s.sc)),
-  ]);
   const go=(s)=>{
-    const cible = ecransMasques.has(s) ? "home" : s;
-    const roots=["splash","home","home_service"];
-    if(roots.includes(cible)){setHistory([cible]);}
-    else{setHistory(p=>[...p,cible]);}
+    const roots=["splash","home"];
+    if(roots.includes(s)){setHistory([s]);}
+    else{setHistory(p=>[...p,s]);}
   };
   const goBack=()=>{
     setHistory(p=>{if(p.length<=1)return p;return p.slice(0,-1);});
   };
 
+  /* ── ESSAI GRATUIT — 1 mois offert à la création du compte ──────────────
+     Calculé à partir de creeLe (horodatage déjà posé sur chaque compte à
+     l'inscription). Tant que l'essai est actif, l'accès Premium est
+     accordé même si le forfait réel (plan) est resté "gratuit" — dès que
+     l'essai expire, l'accès repasse automatiquement au forfait réel. ── */
+  const DUREE_ESSAI_MS = 30*24*60*60*1000; // 30 jours
+  const essaiInfo = (()=>{
+    if(!userInfo.creeLe) return {actif:false, joursRestants:0};
+    const ecoule = Date.now() - userInfo.creeLe;
+    const restant = DUREE_ESSAI_MS - ecoule;
+    if(restant<=0) return {actif:false, joursRestants:0};
+    return {actif:true, joursRestants:Math.max(1,Math.ceil(restant/(24*60*60*1000)))};
+  })();
+  /* Le forfait EFFECTIF déterminant l'accès aux rubriques premium : un
+     abonnement payant l'emporte toujours ; sinon, l'essai gratuit du
+     premier mois donne un accès premium temporaire. ── */
+  const planEffectif = plan==="premium" ? "premium" : (essaiInfo.actif ? "premium" : "gratuit");
 
-  /* ── Alertes publiques partagées (Service Public → Alerte Info + Accueil) ──
-     Persistant : comme les comptes survivent désormais à la fermeture de
-     l'app, les diffusions doivent aussi survivre (elles expirent de toute
-     façon automatiquement après 24h via la purge ci-dessous). ── */
-  const [alertesPubliques,setAlertesPubliques]=useState(()=>{
-    try{
-      const sauvegarde = window.localStorage.getItem("alerteci_alertes");
-      return sauvegarde ? JSON.parse(sauvegarde).filter(alerteEstValide) : [];
-    }catch(e){ return []; }
-  });
-  useEffect(()=>{
-    try{ window.localStorage.setItem("alerteci_alertes", JSON.stringify(alertesPubliques)); }catch(e){}
-  },[alertesPubliques]);
 
-  // Purge automatique des alertes ayant dépassé 24h, vérifiée chaque minute
-  useEffect(()=>{
-    const purge=()=>setAlertesPubliques(prev=>prev.filter(alerteEstValide));
-    purge();
-    const it=setInterval(purge,60000);
-    return ()=>clearInterval(it);
-  },[]);
-
-  /* ── SYNCHRONISATION NATIONALE (toutes les 30 secondes) ─────────────────
-     · Diffusions publiées depuis n'importe quel appareil du pays
-     · Types de service pilotés par le tableau de bord administrateur
-     · Statut du compte institutionnel connecté (validation dashboard)
-     Le tout en best-effort : hors connexion, l'app reste 100% locale. ── */
-  /* ── Urgences reçues : alerte Violence ou suivi GPS qui CIBLE mon numéro.
-     Le téléphone du contact sonne et affiche l'écran d'urgence plein écran ;
-     celui de la personne en danger, lui, ne signale jamais rien. ── */
-  /* ── RAPPELS DE TÂCHES — moteur GLOBAL, actif partout dans l'app.
-     Le déclencheur vit ici, au niveau racine : peu importe l'écran affiché,
-     l'alarme sonne à l'heure de chaque tâche (rattrapage jusqu'à 3 min si
-     l'appareil était occupé). En parallèle, chaque tâche est AUSSI
-     programmée en notification système Android (via le module natif) :
-     elle sonnera à l'heure exacte même app en arrière-plan ou écran
-     verrouillé. ── */
-  const [rappelTache,setRappelTache]=useState(null); // {txt} → overlay + alarme 45 s
-  const rappelsSonnesRef=useRef(null);
-  useEffect(()=>{
-    /* Charger la mémoire des rappels déjà sonnés (persistée, par jour). */
-    try{
-      const s=window.localStorage.getItem("alerteci_rappels_sonnes");
-      rappelsSonnesRef.current=new Set(s?JSON.parse(s):[]);
-    }catch(e){ rappelsSonnesRef.current=new Set(); }
-
-    const cleJour=()=>{ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
-    const lireTaches=()=>{
-      try{
-        const s=window.localStorage.getItem("alerteci_journal_taches");
-        if(!s) return [];
-        const j=JSON.parse(s);
-        let taches=(j&&j[cleJour()])||[];
-        /* Juste après minuit : les tâches « à 00H » saisies la veille sont
-           rangées dans le journal de la veille — on les inclut aussi. */
-        const now=new Date();
-        if(now.getHours()===0 && now.getMinutes()<=5){
-          const hier=new Date(now.getTime()-86400000);
-          const cleHier=`${hier.getFullYear()}-${String(hier.getMonth()+1).padStart(2,"0")}-${String(hier.getDate()).padStart(2,"0")}`;
-          const tHier=((j&&j[cleHier])||[]).filter(t=>t&&/^00:0[0-5]$/.test(t.tm||""));
-          taches=[...taches,...tHier];
-        }
-        return taches;
-      }catch(e){ return []; }
-    };
-    const marquerSonne=(cle)=>{
-      rappelsSonnesRef.current.add(cle);
-      try{ window.localStorage.setItem("alerteci_rappels_sonnes", JSON.stringify([...rappelsSonnesRef.current].slice(-200))); }catch(e){}
-    };
-
-    const verifier=()=>{
-      const now=new Date();
-      const minutesNow=now.getHours()*60+now.getMinutes();
-      const jour=cleJour();
-      lireTaches().forEach(t=>{
-        if(!t||!t.tm||t.dn) return;
-        const m=/^(\d{1,2}):(\d{2})$/.exec(t.tm);
-        if(!m) return;
-        const minutesTache=parseInt(m[1],10)*60+parseInt(m[2],10);
-        const ecart=minutesNow-minutesTache;
-        const cle=jour+"|"+t.tm+"|"+t.txt;
-        /* Sonne à l'heure pile, avec rattrapage si l'app était occupée (≤3 min). */
-        if(ecart>=0 && ecart<=3 && !rappelsSonnesRef.current.has(cle)){
-          marquerSonne(cle);
-          setRappelTache({txt:t.txt});
-          demarrerRappelTache(t.txt, ()=>setRappelTache(null), t.audio||null);
-        }
-      });
-    };
-    verifier();
-    const id=setInterval(verifier,10000);
-
-    /* ── Notifications système natives : programmer chaque tâche à venir.
-       Elles sonnent à l'heure exacte, même app fermée en arrière-plan ou
-       écran verrouillé — c'est Android qui les déclenche, pas l'app. ── */
-    let permLN=null; // demandée UNE seule fois par session, en file
-    const programmerNatives=async()=>{
-      try{
-        const LN=window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.LocalNotifications;
-        if(!LN) return;
-        if(permLN===null){
-          permLN=await enchainerNatif(()=>LN.requestPermissions()).catch(()=>null);
-          if(permLN&&permLN.display==="granted"){
-            await enchainerNatif(()=>LN.createChannel({id:"rappels_taches",name:"Rappels de tâches",description:"Alarmes de rappel du planning",importance:5,visibility:1,vibration:true})).catch(()=>{});
-          }
-        }
-        if(!permLN||permLN.display!=="granted") return;
-        /* Annuler les programmations précédentes pour repartir proprement. */
-        let anciens=[];
-        try{ anciens=JSON.parse(window.localStorage.getItem("alerteci_notifs_programmees")||"[]"); }catch(e){}
-        if(anciens.length){
-          try{ await LN.cancel({notifications:anciens.map(id=>({id}))}); }catch(e){}
-        }
-        const now=new Date();
-        const aVenir=lireTaches().filter(t=>{
-          if(!t||!t.tm||t.dn) return false;
-          return /^(\d{1,2}):(\d{2})$/.test(t.tm);
-        });
-        if(!aVenir.length){ try{ window.localStorage.setItem("alerteci_notifs_programmees","[]"); }catch(e){} return; }
-        const notifs=aVenir.map(t=>{
-          const m=/^(\d{1,2}):(\d{2})$/.exec(t.tm);
-          const d=new Date(); d.setHours(parseInt(m[1],10),parseInt(m[2],10),0,0);
-          /* Heure déjà passée aujourd'hui (ex: tâche à 00H saisie l'après-midi)
-             → l'alarme est programmée pour la prochaine occurrence (demain). */
-          if(d.getTime()<=now.getTime()+15000) d.setDate(d.getDate()+1);
-          let h=0; const sTxt=t.tm+"|"+t.txt;
-          for(let i=0;i<sTxt.length;i++){ h=((h*31)+sTxt.charCodeAt(i))|0; }
-          return {
-            id:Math.abs(h)%2000000000,
-            title:"⏰ Rappel de tâche",
-            body:t.txt,
-            schedule:{at:d, allowWhileIdle:true},
-            channelId:"rappels_taches",
-          };
-        });
-        await LN.schedule({notifications:notifs});
-        try{ window.localStorage.setItem("alerteci_notifs_programmees", JSON.stringify(notifs.map(n=>n.id))); }catch(e){}
-      }catch(e){}
-    };
-    const tNat=setTimeout(programmerNatives, 8000);
-    const idNat=setInterval(programmerNatives, 60000);
-
-    return ()=>{ clearInterval(id); clearInterval(idNat); clearTimeout(tNat); };
-  },[]);
+  /* ── URGENCES CIBLÉES — Violence & Enlèvement, synchronisées toutes les
+     3 secondes. Le téléphone du contact sonne et affiche l'écran d'urgence
+     plein écran ; celui de la personne en danger, lui, ne signale jamais
+     rien. Fonctionne en best-effort : hors connexion, l'app reste locale. ── */
 
   const [urgenceRecue,setUrgenceRecue]=useState(null);
   const urgencesSonneesRef=useRef(new Set());
@@ -5996,15 +3681,6 @@ export default function AlerteCI() {
   useEffect(()=>{
     let actif=true;
     const synchroniser=async()=>{
-      const distantes = await cloudChargerDiffusions();
-      if(actif && distantes.length){
-        setAlertesPubliques(prev=>{
-          const dejaLa = new Set(prev.map(a=>a.id));
-          const nouvelles = distantes.filter(a=>!a.urgence && !dejaLa.has(a.id) && alerteEstValide(a));
-          if(!nouvelles.length) return prev;
-          return [...nouvelles, ...prev].sort((a,b)=>b.ts-a.ts);
-        });
-      }
       /* Urgences qui me sont adressées (mon numéro dans la liste des cibles) */
       if(userInfo.ph){
         const urgences = await cloudChargerUrgences(userInfo.ph);
@@ -6056,20 +3732,11 @@ export default function AlerteCI() {
           });
         }
       }
-      const types = await cloudChargerTypesService();
-      if(actif && types.length) setTypesServiceDisponibles(types);
-      if(userInfo.plan==="institution" && userInfo.cloudId){
-        const statut = await cloudStatutInstitution(userInfo.cloudId);
-        if(actif && statut && statut!==userInfo.statut){
-          setUserInfo(prev=>({...prev, statut}));
-          setComptesInscrits(prev=>prev.map(c=>c.cloudId===userInfo.cloudId?{...c,statut}:c));
-        }
-      }
     };
     synchroniser();
     const it=setInterval(synchroniser,3000);
     return ()=>{actif=false;clearInterval(it);};
-  },[userInfo.plan,userInfo.cloudId,userInfo.statut,userInfo.ph]);
+  },[userInfo.ph]);
 
   /* ── Bouton retour du téléphone (Android) : revient toujours à l'écran
      précédent de l'application, jusqu'à l'accueil, SANS JAMAIS la fermer.
@@ -6082,7 +3749,7 @@ export default function AlerteCI() {
         if(p.length<=1) return p;                 // déjà à la racine → on ne sort pas
         const suivant=p.slice(0,-1);
         const der=suivant[suivant.length-1];
-        if(der==="splash") return [userInfo.plan==="institution"?"home_service":"home"];
+        if(der==="splash") return ["home"];
         return suivant;
       });
       try{ window.history.pushState({alerteci:true},""); }catch(e){}
@@ -6091,36 +3758,31 @@ export default function AlerteCI() {
     return ()=>window.removeEventListener("popstate",onPop);
   },[userInfo.plan]);
 
-  /* ── Pop-up de notification en direct ────────────────────────────────────
-     Dès qu'une information est diffusée (par un service public OU par un
-     citoyen qui signale une situation à un service), un pop-up apparaît
-     en haut de l'écran chez TOUS les autres comptes connectés pendant la
-     session, peu importe l'écran sur lequel ils se trouvent. ── */
-  const [notifPopup,setNotifPopup]=useState(null); // {titre, texte, icon, c, bg} | null
-  const notifPopupTimerRef=useRef(null);
-  const afficherNotifPopup=(data)=>{
-    setNotifPopup(data);
-    clearTimeout(notifPopupTimerRef.current);
-    notifPopupTimerRef.current=setTimeout(()=>setNotifPopup(null),4500);
-  };
+  /* ── Partages GPS en direct (rubrique Enlèvement / Disparition) ──────────
+     Chaque partage actif est un objet {id, nom, ph, lat, lng, precision, ts,
+     contacts}. La mise à jour de la position se fait en continu via
+     majPositionGps (appelé par watchPosition côté émetteur), et tous les
+     écrans qui consultent partagesGps se synchronisent automatiquement dès
+     que cet état change — c'est ce qui permet au destinataire de voir la
+     position se mettre à jour à chaque actualisation. ── */
+  const [partagesGps,setPartagesGps]=useState([]);
 
-  const ajouterAlertePublique=(alerte)=>{
-    const diffusion = {...alerte, id:`svc-${Date.now()}`, ts:Date.now()};
-    setAlertesPubliques(prev=>[diffusion, ...prev]);
-    /* Diffusion nationale : la même alerte part vers le serveur pour
-       apparaître sur tous les téléphones du pays (best-effort). */
-    cloudPublierDiffusion(diffusion);
-    afficherNotifPopup({
-      titre: alerte.institution || alerte.service || "Nouvelle information",
-      texte: alerte.apercu || alerte.titre || "",
-      icon: alerte.icon || "📢",
-      c: alerte.c || C.green,
-      bg: alerte.bg || C.greenL,
+  const demarrerPartageGps=(id,nom)=>{
+    setPartagesGps(prev=>prev.some(p=>p.id===id)?prev:[...prev,{id,nom,lat:null,lng:null,precision:null,ts:Date.now(),contacts:[]}]);
+  };
+  const majPositionGps=(id,data)=>{
+    setPartagesGps(prev=>{
+      const existe=prev.some(p=>p.id===id);
+      if(existe) return prev.map(p=>p.id===id?{...p,...data}:p);
+      return [...prev,data];
     });
+  };
+  const arreterPartageGps=(id)=>{
+    setPartagesGps(prev=>prev.filter(p=>p.id!==id));
   };
 
   /* ── REGISTRE CENTRAL DES COMPTES CRÉÉS — PERSISTANT ─────────────────────
-     Chaque inscription (citoyen ou institution) est conservée ici avec son
+     Chaque inscription est conservée ici avec son
      numéro et son code d'accès, afin que l'écran de Connexion puisse
      reconnaître N'IMPORTE QUEL compte créé — pas seulement le dernier, et
      pas seulement pendant la session en cours. Sauvegardé dans localStorage
@@ -6137,48 +3799,13 @@ export default function AlerteCI() {
     try{ window.localStorage.setItem("alerteci_comptes", JSON.stringify(comptesInscrits)); }catch(e){}
   },[comptesInscrits]);
 
-  /* ── Types de service institutionnel — modifiables depuis le dashboard admin,
-     persistant pour ne pas perdre les ajouts/retraits à la fermeture de l'app ── */
-  const [typesServiceDisponibles,setTypesServiceDisponibles]=useState(()=>{
-    try{
-      const sauvegarde = window.localStorage.getItem("alerteci_types_service");
-      return sauvegarde ? JSON.parse(sauvegarde) : TYPES_SERVICE_DEFAUT;
-    }catch(e){ return TYPES_SERVICE_DEFAUT; }
-  });
-  useEffect(()=>{
-    try{ window.localStorage.setItem("alerteci_types_service", JSON.stringify(typesServiceDisponibles)); }catch(e){}
-  },[typesServiceDisponibles]);
-  const ajouterTypeService=(nom)=>{
-    const n=nom.trim();
-    if(!n) return;
-    setTypesServiceDisponibles(prev=>prev.includes(n)?prev:[...prev,n]);
-  };
-  const retirerTypeService=(nom)=>{
-    setTypesServiceDisponibles(prev=>prev.filter(t=>t!==nom));
-  };
-
   const onSignup=(info)=>{
-    const essaiFin = info.plan==="institution" ? undefined : new Date(Date.now()+ESSAI_DUREE_MS).toISOString();
-    const compteComplet={
-      ...info,
-      nm:saneTxt(info.nm,120), commune:saneTxt(info.commune,80),
-      responsable:info.responsable?saneTxt(info.responsable,120):info.responsable,
-      id:`acc-${Date.now()}`, creeLe:Date.now(), essaiFin,
-    };
+    const compteComplet={...info, id:`acc-${Date.now()}`, creeLe:Date.now()};
     setComptesInscrits(prev=>[...prev, compteComplet]);
     setUserInfo(compteComplet);
     setPlan(info.plan);
-    /* Inscription nationale : le compte est créé sur Firebase (auth) puis
-       sur Supabase (fiche), partagés avec le tableau de bord administrateur.
-       Pour une institution, on récupère son identifiant national (cloudId)
-       afin que la validation effectuée depuis le dashboard se répercute sur
-       ce compte. Si le numéro est déjà utilisé, on le signale au registre
-       local pour éviter un doublon silencieux. */
+    /* Inscription nationale : le compte est créé sur le serveur partagé. */
     cloudSignup(compteComplet).then((res)=>{
-      if(res && res.dejaExistant){
-        setComptesInscrits(prev=>prev.filter(c=>c.id!==compteComplet.id));
-        return;
-      }
       if(res && res.id){
         setComptesInscrits(prev=>prev.map(c=>c.id===compteComplet.id?{...c,cloudId:res.id}:c));
         setUserInfo(prev=>prev.id===compteComplet.id?{...prev,cloudId:res.id}:prev);
@@ -6194,87 +3821,31 @@ export default function AlerteCI() {
      démarrage malgré la déconnexion. Le compte lui-même reste dans le
      registre comptesInscrits : seule la session active est effacée. ── */
   const seDeconnecter=()=>{
-    try{
-      const BL=window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.BgLocation;
-      if(BL) enchainerNatif(()=>BL.stop());
-    }catch(e){}
-    cloudSetFbSession(null);
     setUserInfo({nm:"",ph:"",mail:"",commune:"",plan:"gratuit"});
     setPlan("gratuit");
     go("splash");
   };
 
-  /* ── Session unique par numéro ────────────────────────────────────────
-     Vérifie régulièrement, pendant que l'app est ouverte, que cet appareil
-     est toujours celui enregistré côté serveur pour ce numéro. Si un autre
-     appareil s'est connecté entre-temps avec le même numéro (ou si le compte
-     a été bloqué depuis le dashboard admin), la session locale est fermée. ── */
-  const [sessionExpulsee,setSessionExpulsee]=useState(false);
-  useEffect(()=>{
-    if(!userInfo.ph || userInfo.plan==="institution") return;
-    const verifier=async()=>{
-      const active = await cloudSessionEncoreActive(userInfo.ph);
-      if(!active){
-        cloudSetFbSession(null);
-        setUserInfo({nm:"",ph:"",mail:"",commune:"",plan:"gratuit"});
-        setPlan("gratuit");
-        setSessionExpulsee(true);
-        go("splash");
-      }
-    };
-    const it=setInterval(verifier,45000);
-    return ()=>clearInterval(it);
-  },[userInfo.ph]);
-
-  /* ── Validation / refus d'un compte institutionnel par l'admin ─────────
-     Une fois validé, le statut passe à "valide" à la fois dans le registre
-     et dans userInfo si c'est le compte actuellement connecté — c'est ce
-     qui débloque immédiatement la diffusion côté Service Public. ── */
-  const validerCompteInstitution=(id,nouveauStatut)=>{
-    setComptesInscrits(prev=>prev.map(c=>c.id===id?{...c,statut:nouveauStatut}:c));
-    setUserInfo(prev=>prev.id===id?{...prev,statut:nouveauStatut}:prev);
-    /* Répercuter la décision au national (visible depuis le dashboard). */
-    const compte = comptesInscrits.find(c=>c.id===id);
-    if(compte && compte.cloudId) cloudValiderInstitution(compte.cloudId, nouveauStatut);
-  };
   const onPaiementSuccess=()=>{
-    const premiumExpire = new Date(Date.now()+365*24*60*60*1000).toISOString();
     setPlan("premium");
-    setUserInfo(p=>({...p,plan:"premium",premiumExpire}));
-    if(userInfo.ph){
-      cloudUpdate("profiles", `telephone=eq.${userInfo.ph}`, { forfait:"premium_annuel", premium_expire:premiumExpire }).catch(()=>{});
-    }
+    setUserInfo(p=>({...p,plan:"premium"}));
     go("home");
   };
 
-  /* ── Confirmation rapide du code d'accès (AccesRapide) ───────────────────
-     Route vers le bon tableau de bord selon le type de compte restauré —
-     un compte institutionnel doit retrouver home_service, pas l'écran
-     citoyen, sans quoi la session restaurée serait incorrecte. ── */
-  const onAcces=()=>go(userInfo.plan==="institution"?"home_service":"home");
+  const onAcces=()=>go("home");
 
   const screens={
     splash:<Splash go={go} userInfo={userInfo} onAcces={onAcces}/>,
     login:<Login go={go} goBack={goBack} setPlan={setPlan} setUserInfo={setUserInfo} userInfo={userInfo} comptesInscrits={comptesInscrits}/>,
-    home:<Home go={go} plan={plan} userInfo={userInfo} alertesPubliques={alertesPubliques}/>,
+    home:<Home go={go} plan={planEffectif} userInfo={userInfo} essai={essaiInfo}/>,
     violence:<Violence go={go} goBack={goBack} userInfo={userInfo}/>,
-    enlevement:<Enlevement go={go} goBack={goBack} userInfo={userInfo}/>,
-
-    planning:<Planning go={go} goBack={goBack}/>,
-    info:<Info go={go} goBack={goBack} plan={plan} alertesPubliques={alertesPubliques}/>,
-    ...Object.fromEntries(SERVICES_PUBLICS_CONFIG.map(s=>[s.sc,<ServicePublicEcran key={s.sc} go={go} goBack={goBack} config={s} alertesPubliques={alertesPubliques} ajouterAlertePublique={ajouterAlertePublique}/>])),
-    effondrement:<Effondrement go={go} goBack={goBack}/>,
-    incendie:<Incendie go={go} goBack={goBack}/>,
-    signup:<Signup go={go} goBack={goBack} onSignup={onSignup} userInfo={userInfo} comptesInscrits={comptesInscrits} typesService={typesServiceDisponibles}/>,
+    enlevement:<Enlevement go={go} goBack={goBack} userInfo={userInfo} partagesGps={partagesGps} demarrerPartageGps={demarrerPartageGps} arreterPartageGps={arreterPartageGps} majPositionGps={majPositionGps}/>,
+    signup:<Signup go={go} goBack={goBack} onSignup={onSignup} userInfo={userInfo} comptesInscrits={comptesInscrits}/>,
     paiement:<Paiement go={go} goBack={goBack} onSuccess={onPaiementSuccess}/>,
     parametres:<Parametres go={go} goBack={goBack}/>,
-    home_service:<HomeService go={go} userInfo={userInfo} alertesPubliques={alertesPubliques} ajouterAlertePublique={ajouterAlertePublique}/>,
-    profil_service:<ProfilService go={go} goBack={goBack} userInfo={userInfo} seDeconnecter={seDeconnecter}/>,
-    parametres_service:<ParametresService go={go} goBack={goBack} userInfo={userInfo} setUserInfo={setUserInfo}/>,
     cgu:<Cgu go={go} goBack={goBack}/>,
     faq:<Faq go={go} goBack={goBack}/>,
-    profil:<Profil go={go} goBack={goBack} userInfo={userInfo} setUserInfo={setUserInfo} plan={plan} setPlan={setPlan} seDeconnecter={seDeconnecter}/>,
-    admin:<AdminDashboard go={go} goBack={goBack} comptesInscrits={comptesInscrits} validerCompteInstitution={validerCompteInstitution} typesServiceDisponibles={typesServiceDisponibles} ajouterTypeService={ajouterTypeService} retirerTypeService={retirerTypeService}/>,
+    profil:<Profil go={go} goBack={goBack} userInfo={userInfo} setUserInfo={setUserInfo} plan={planEffectif} setPlan={setPlan} seDeconnecter={seDeconnecter}/>,
   };
   return (
     <>
@@ -6283,23 +3854,6 @@ export default function AlerteCI() {
         <div className="sbar">
           <span><HeureLive/></span>
         </div>
-        {rappelTache&&(
-          <div style={{position:"fixed",inset:0,zIndex:220,background:"rgba(0,0,0,.75)",display:"flex",alignItems:"center",justifyContent:"center",padding:24,animation:"stin 200ms var(--eo)"}}>
-            <div style={{background:"linear-gradient(160deg,#7C2D12,#9A3412)",borderRadius:24,padding:"28px 22px",maxWidth:340,width:"100%",textAlign:"center"}}>
-              <div style={{width:64,height:64,borderRadius:"50%",background:"rgba(255,255,255,.15)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 14px",animation:"bk 1s ease infinite"}}>
-                <span style={{fontSize:30}}>⏰</span>
-              </div>
-              <p style={{fontFamily:"Sora,sans-serif",fontSize:18,fontWeight:800,color:"#fff",marginBottom:6}}>Rappel de tâche</p>
-              <p style={{fontSize:14,color:"rgba(255,255,255,.85)",lineHeight:1.5,marginBottom:6}}>{rappelTache.txt}</p>
-              <p style={{fontSize:11,color:"rgba(255,255,255,.55)",marginBottom:18}}>L'alarme et la lecture vocale s'arrêteront d'elles-mêmes après 45 secondes.</p>
-              <button onClick={()=>{arreterRappelTache();setRappelTache(null);}}
-                style={{width:"100%",background:"#fff",border:"none",borderRadius:14,padding:"14px",cursor:"pointer",
-                  fontSize:14,fontWeight:800,color:"#7C2D12",fontFamily:"Plus Jakarta Sans"}}>
-                ✓ J'ai compris — arrêter le rappel
-              </button>
-            </div>
-          </div>
-        )}
         {urgenceRecue&&(
           <div onClick={()=>{ try{ _deverrouillerAudio(); if(!_sireneOsc && !arreteesLocalementRef.current.has(urgenceRecue.alerteId)) jouerSireneUrgence(); }catch(e){} }} style={{position:"absolute",inset:0,zIndex:300,display:"flex",flexDirection:"column",
             background:urgenceRecue.type==="gps"?"linear-gradient(165deg,#2E1065,#4C1D95)":"linear-gradient(165deg,#450A0A,#7F1D1D)",
@@ -6424,27 +3978,6 @@ export default function AlerteCI() {
                 </button>
               )}
             </div>
-          </div>
-        )}
-        {notifPopup&&(
-          <div
-            onClick={()=>setNotifPopup(null)}
-            style={{
-              position:"absolute", top:14, left:12, right:12, zIndex:200,
-              background:"#fff", borderRadius:18, padding:"12px 14px",
-              boxShadow:"0 12px 32px rgba(0,0,0,.18), 0 0 0 1px rgba(0,0,0,.04)",
-              display:"flex", alignItems:"center", gap:12, cursor:"pointer",
-              animation:"stin 280ms var(--esp)",
-            }}>
-            <div style={{width:40,height:40,borderRadius:12,background:notifPopup.bg,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:18}}>
-              {notifPopup.icon}
-            </div>
-            <div style={{flex:1,minWidth:0}}>
-              <p style={{fontSize:13,fontWeight:800,color:notifPopup.c}}>{notifPopup.titre}</p>
-              <p style={{fontSize:12,color:C.muted,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{notifPopup.texte}</p>
-            </div>
-            <button onClick={(e)=>{e.stopPropagation();setNotifPopup(null);}}
-              style={{background:"none",border:"none",cursor:"pointer",color:C.faint,fontSize:14,flexShrink:0,padding:4}}>✕</button>
           </div>
         )}
         {screens[screen]}
