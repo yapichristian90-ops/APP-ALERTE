@@ -1,0 +1,79 @@
+{
+  "expo": {
+    "name": "ALERTE Côte d'Ivoire",
+    "slug": "alerte-cote-divoire",
+    "scheme": "alerteci",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#FFF7F0",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#E8630A"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "ci.alerte.cotedivoire",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "ALERTE Côte d'Ivoire a besoin de votre position pour transmettre votre localisation à vos contacts d'urgence en cas de danger.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "ALERTE Côte d'Ivoire suit votre position en continu dans la rubrique Alerte Enlèvement afin que vos contacts de confiance puissent vous localiser en cas de disparition.",
+        "NSMicrophoneUsageDescription": "ALERTE Côte d'Ivoire écoute un cri discret de détresse pour déclencher automatiquement une alerte violence.",
+        "UIBackgroundModes": ["location", "audio", "fetch", "remote-notification"]
+      }
+    },
+    "android": {
+      "package": "ci.alerte.cotedivoire",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#E8630A"
+      },
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION",
+        "RECORD_AUDIO",
+        "POST_NOTIFICATIONS",
+        "VIBRATE",
+        "CALL_PHONE"
+      ],
+      "config": {
+        "googleMaps": {
+          "apiKey": "REMPLACER_PAR_VOTRE_CLE_GOOGLE_MAPS_ANDROID"
+        }
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "ALERTE Côte d'Ivoire suit votre position en continu dans la rubrique Alerte Enlèvement afin que vos contacts de confiance puissent vous localiser en cas de disparition.",
+          "isAndroidBackgroundLocationEnabled": true
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#E8630A",
+          "sounds": ["./assets/audio/sirene.wav"]
+        }
+      ]
+    ],
+    "extra": {
+      "router": {
+        "origin": false
+      }
+    }
+  }
+}
